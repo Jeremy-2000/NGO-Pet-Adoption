@@ -1,0 +1,3 @@
+-- Initial production schema migration.
+-- Apply this migration by running database/schema.sql against the configured MySQL database.
+-- The canonical schema is kept in ../schema.sql so Hostinger deployments and local installs share one source.
