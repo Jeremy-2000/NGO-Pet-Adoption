@@ -36,6 +36,7 @@ try {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Admin Dashboard | <?php echo e(config('app_name')); ?></title>
   <link rel="stylesheet" href="<?php echo e(asset('css/styles.css')); ?>">
+  <script defer src="<?php echo e(asset('js/app.js')); ?>"></script>
 </head>
 <body>
   <div class="app-shell">
@@ -94,7 +95,7 @@ try {
       <section class="card">
         <h2>Recent activity</h2>
         <div class="table-wrap">
-          <table class="table">
+          <table class="table" data-enhanced-table data-table-empty="No activity matches these filters.">
             <thead><tr><th>Action</th><th>Target</th><th>When</th></tr></thead>
             <tbody>
               <?php foreach ($recentActivity as $activity) : ?>

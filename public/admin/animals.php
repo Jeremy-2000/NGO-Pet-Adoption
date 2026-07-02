@@ -42,6 +42,7 @@ $success = flash('success');
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Animal Moderation | <?php echo e(config('app_name')); ?></title>
   <link rel="stylesheet" href="<?php echo e(asset('css/styles.css')); ?>">
+  <script defer src="<?php echo e(asset('js/app.js')); ?>"></script>
 </head>
 <body>
   <div class="app-shell">
@@ -60,16 +61,18 @@ $success = flash('success');
       <?php if ($success) : ?><div class="alert alert-success"><?php echo e($success); ?></div><?php endif; ?>
       <section class="card">
         <div class="table-wrap">
-          <table class="table">
-            <thead><tr><th>Name</th><th>Shelter</th><th>Status</th><th>Engagement</th><th>Action</th></tr></thead>
+          <table class="table" data-enhanced-table data-table-empty="No animal listings match these filters.">
+            <thead><tr><th>Name</th><th>Shelter</th><th>Status</th><th>Species</th><th>Size</th><th>Engagement</th><th data-no-filter="true" data-no-sort="true">Action</th></tr></thead>
             <tbody>
               <?php foreach ($animals as $animal) : ?>
                 <tr>
                   <td><strong><?php echo e($animal['name']); ?></strong><br><span class="muted"><?php echo e($animal['species']); ?> - <?php echo e($animal['breed'] ?: 'Mixed breed'); ?></span></td>
                   <td><?php echo e($animal['shelter_name']); ?></td>
                   <td><?php echo e(status_label($animal['status'])); ?><?php echo (int) $animal['is_featured'] === 1 ? ' / Featured' : ''; ?></td>
+                  <td><?php echo e($animal['species']); ?></td>
+                  <td><?php echo e($animal['size'] ?: 'Not listed'); ?></td>
                   <td><?php echo e($animal['views_count']); ?> views<br><?php echo e($animal['favorites_count']); ?> favorites</td>
-                  <td>
+                  <td class="table-actions">
                     <form method="post" class="inline-form">
                       <input type="hidden" name="csrf_token" value="<?php echo e(csrfToken()); ?>">
                       <input type="hidden" name="animal_id" value="<?php echo e($animal['id']); ?>">

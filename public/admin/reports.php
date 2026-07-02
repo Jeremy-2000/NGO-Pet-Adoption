@@ -42,6 +42,7 @@ $success = flash('success');
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Reports | <?php echo e(config('app_name')); ?></title>
   <link rel="stylesheet" href="<?php echo e(asset('css/styles.css')); ?>">
+  <script defer src="<?php echo e(asset('js/app.js')); ?>"></script>
 </head>
 <body>
   <div class="app-shell">
@@ -60,8 +61,8 @@ $success = flash('success');
       <?php if ($success) : ?><div class="alert alert-success"><?php echo e($success); ?></div><?php endif; ?>
       <section class="card">
         <div class="table-wrap">
-          <table class="table">
-            <thead><tr><th>Reporter</th><th>Target</th><th>Reason</th><th>Status</th><th>Action</th></tr></thead>
+          <table class="table" data-enhanced-table data-table-empty="No reports match these filters.">
+            <thead><tr><th>Reporter</th><th>Target</th><th>Reason</th><th>Status</th><th data-no-filter="true" data-no-sort="true">Action</th></tr></thead>
             <tbody>
               <?php foreach ($reports as $report) : ?>
                 <tr>
@@ -69,7 +70,8 @@ $success = flash('success');
                   <td><?php echo e($report['animal_name'] ?: 'General'); ?><br><span class="muted"><?php echo e($report['shelter_name'] ?: 'No shelter'); ?></span></td>
                   <td><?php echo e(excerpt($report['reason'], 180)); ?></td>
                   <td><?php echo e(status_label($report['status'])); ?></td>
-                  <td>
+                  <td class="table-actions">
+                    <button class="btn secondary small" type="button" data-open-dialog="report-dialog-<?php echo e($report['id']); ?>">Open</button>
                     <form method="post" class="inline-form">
                       <input type="hidden" name="csrf_token" value="<?php echo e(csrfToken()); ?>">
                       <input type="hidden" name="report_id" value="<?php echo e($report['id']); ?>">
@@ -87,6 +89,41 @@ $success = flash('success');
           </table>
         </div>
       </section>
+
+      <?php foreach ($reports as $report) : ?>
+        <dialog class="app-dialog" id="report-dialog-<?php echo e($report['id']); ?>">
+          <div class="dialog-shell">
+            <header class="dialog-header">
+              <div>
+                <p class="eyebrow">Moderation report</p>
+                <h2><?php echo e($report['animal_name'] ?: 'General report'); ?></h2>
+              </div>
+              <button class="dialog-close" type="button" data-close-dialog>Close</button>
+            </header>
+            <div class="detail-list">
+              <div><span>Reporter</span><strong><?php echo e($report['reporter_name']); ?></strong></div>
+              <div><span>Email</span><strong><a href="mailto:<?php echo e($report['reporter_email']); ?>"><?php echo e($report['reporter_email']); ?></a></strong></div>
+              <div><span>Shelter</span><strong><?php echo e($report['shelter_name'] ?: 'No shelter'); ?></strong></div>
+              <div><span>Status</span><strong><?php echo e(status_label($report['status'])); ?></strong></div>
+              <div><span>Submitted</span><strong><?php echo e($report['created_at']); ?></strong></div>
+            </div>
+            <section>
+              <h3>Reason</h3>
+              <p class="dialog-copy"><?php echo nl2br(e($report['reason'])); ?></p>
+            </section>
+            <form method="post" class="inline-form">
+              <input type="hidden" name="csrf_token" value="<?php echo e(csrfToken()); ?>">
+              <input type="hidden" name="report_id" value="<?php echo e($report['id']); ?>">
+              <select class="input compact-input" name="status">
+                <?php foreach (['open', 'reviewed', 'resolved'] as $status) : ?>
+                  <option value="<?php echo e($status); ?>" <?php echo selected($report['status'], $status); ?>><?php echo e(status_label($status)); ?></option>
+                <?php endforeach; ?>
+              </select>
+              <button type="submit" class="btn green small">Save status</button>
+            </form>
+          </div>
+        </dialog>
+      <?php endforeach; ?>
     </main>
   </div>
 </body>

@@ -49,6 +49,7 @@ try {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Inquiries | <?php echo e(config('app_name')); ?></title>
   <link rel="stylesheet" href="<?php echo e(asset('css/styles.css')); ?>">
+  <script defer src="<?php echo e(asset('js/app.js')); ?>"></script>
 </head>
 <body>
   <div class="app-shell">
@@ -66,8 +67,8 @@ try {
       <header class="page-header"><div><p class="eyebrow">Shelter portal</p><h1>Inquiries</h1></div></header>
       <section class="card">
         <div class="table-wrap">
-          <table class="table">
-            <thead><tr><th>From</th><th>Animal</th><th>Message</th><th>Status</th><th>Action</th></tr></thead>
+          <table class="table" data-enhanced-table data-table-empty="No inquiries match these filters.">
+            <thead><tr><th>From</th><th>Animal</th><th>Message</th><th>Status</th><th data-no-filter="true" data-no-sort="true">Action</th></tr></thead>
             <tbody>
               <?php foreach ($inquiries as $inquiry) : ?>
                 <tr>
@@ -75,7 +76,8 @@ try {
                   <td><?php echo e($inquiry['animal_name'] ?: 'General'); ?></td>
                   <td><?php echo e(excerpt($inquiry['message'], 180)); ?></td>
                   <td><?php echo e(status_label($inquiry['status'])); ?></td>
-                  <td>
+                  <td class="table-actions">
+                    <button class="btn secondary small" type="button" data-open-dialog="inquiry-dialog-<?php echo e($inquiry['id']); ?>">Open</button>
                     <form method="post" class="inline-form">
                       <input type="hidden" name="csrf_token" value="<?php echo e(csrfToken()); ?>">
                       <input type="hidden" name="inquiry_id" value="<?php echo e($inquiry['id']); ?>">
@@ -93,6 +95,41 @@ try {
           </table>
         </div>
       </section>
+
+      <?php foreach ($inquiries as $inquiry) : ?>
+        <dialog class="app-dialog" id="inquiry-dialog-<?php echo e($inquiry['id']); ?>">
+          <div class="dialog-shell">
+            <header class="dialog-header">
+              <div>
+                <p class="eyebrow">Adoption inquiry</p>
+                <h2><?php echo e($inquiry['animal_name'] ?: 'General inquiry'); ?></h2>
+              </div>
+              <button class="dialog-close" type="button" data-close-dialog>Close</button>
+            </header>
+            <div class="detail-list">
+              <div><span>Name</span><strong><?php echo e($inquiry['name']); ?></strong></div>
+              <div><span>Email</span><strong><a href="mailto:<?php echo e($inquiry['email']); ?>"><?php echo e($inquiry['email']); ?></a></strong></div>
+              <div><span>Phone</span><strong><?php echo e($inquiry['phone'] ?: 'Not listed'); ?></strong></div>
+              <div><span>Status</span><strong><?php echo e(status_label($inquiry['status'])); ?></strong></div>
+              <div><span>Submitted</span><strong><?php echo e($inquiry['created_at']); ?></strong></div>
+            </div>
+            <section>
+              <h3>Message</h3>
+              <p class="dialog-copy"><?php echo nl2br(e($inquiry['message'])); ?></p>
+            </section>
+            <form method="post" class="inline-form">
+              <input type="hidden" name="csrf_token" value="<?php echo e(csrfToken()); ?>">
+              <input type="hidden" name="inquiry_id" value="<?php echo e($inquiry['id']); ?>">
+              <select class="input compact-input" name="status">
+                <?php foreach (['new', 'reviewed', 'closed'] as $status) : ?>
+                  <option value="<?php echo e($status); ?>" <?php echo selected($inquiry['status'], $status); ?>><?php echo e(status_label($status)); ?></option>
+                <?php endforeach; ?>
+              </select>
+              <button class="btn green small" type="submit">Save status</button>
+            </form>
+          </div>
+        </dialog>
+      <?php endforeach; ?>
     </main>
   </div>
 </body>

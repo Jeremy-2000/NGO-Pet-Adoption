@@ -40,6 +40,7 @@ $success = flash('success');
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Shelter Review | <?php echo e(config('app_name')); ?></title>
   <link rel="stylesheet" href="<?php echo e(asset('css/styles.css')); ?>">
+  <script defer src="<?php echo e(asset('js/app.js')); ?>"></script>
 </head>
 <body>
   <div class="app-shell">
@@ -59,8 +60,8 @@ $success = flash('success');
       <?php if ($error !== '') : ?><div class="alert alert-error"><?php echo e($error); ?></div><?php endif; ?>
       <section class="card">
         <div class="table-wrap">
-          <table class="table">
-            <thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Location</th><th>Action</th></tr></thead>
+          <table class="table" data-enhanced-table data-table-empty="No shelter applications match these filters.">
+            <thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Location</th><th data-no-filter="true" data-no-sort="true">Action</th></tr></thead>
             <tbody>
               <?php foreach ($shelters as $shelter) : ?>
                 <tr>
@@ -68,7 +69,8 @@ $success = flash('success');
                   <td><?php echo e($shelter['email']); ?></td>
                   <td><?php echo e(status_label($shelter['status'])); ?></td>
                   <td><?php echo e($shelter['city'] ?: $shelter['country'] ?: 'Not listed'); ?></td>
-                  <td>
+                  <td class="table-actions">
+                    <button class="btn secondary small" type="button" data-open-dialog="shelter-dialog-<?php echo e($shelter['id']); ?>">Open</button>
                     <form method="post" class="inline-form">
                       <input type="hidden" name="csrf_token" value="<?php echo e(csrfToken()); ?>">
                       <input type="hidden" name="shelter_id" value="<?php echo e($shelter['id']); ?>">
@@ -86,6 +88,41 @@ $success = flash('success');
           </table>
         </div>
       </section>
+
+      <?php foreach ($shelters as $shelter) : ?>
+        <dialog class="app-dialog" id="shelter-dialog-<?php echo e($shelter['id']); ?>">
+          <div class="dialog-shell">
+            <header class="dialog-header">
+              <div>
+                <p class="eyebrow">Shelter application</p>
+                <h2><?php echo e($shelter['name']); ?></h2>
+              </div>
+              <button class="dialog-close" type="button" data-close-dialog>Close</button>
+            </header>
+            <div class="detail-list">
+              <div><span>Status</span><strong><?php echo e(status_label($shelter['status'])); ?></strong></div>
+              <div><span>Email</span><strong><?php echo e($shelter['email']); ?></strong></div>
+              <div><span>Phone</span><strong><?php echo e($shelter['contact_phone'] ?: 'Not listed'); ?></strong></div>
+              <div><span>Location</span><strong><?php echo e(trim(($shelter['city'] ?: '') . ' ' . ($shelter['region'] ?: '') . ' ' . ($shelter['country'] ?: '')) ?: 'Not listed'); ?></strong></div>
+              <div><span>Website</span><strong><?php echo e($shelter['website'] ?: 'Not listed'); ?></strong></div>
+            </div>
+            <section>
+              <h3>Description</h3>
+              <p class="dialog-copy"><?php echo nl2br(e($shelter['description'] ?: 'No description submitted.')); ?></p>
+            </section>
+            <form method="post" class="inline-form">
+              <input type="hidden" name="csrf_token" value="<?php echo e(csrfToken()); ?>">
+              <input type="hidden" name="shelter_id" value="<?php echo e($shelter['id']); ?>">
+              <select class="input compact-input" name="status">
+                <?php foreach (['applied', 'pending_review', 'approved', 'rejected'] as $status) : ?>
+                  <option value="<?php echo e($status); ?>" <?php echo selected($shelter['status'], $status); ?>><?php echo e(status_label($status)); ?></option>
+                <?php endforeach; ?>
+              </select>
+              <button type="submit" class="btn green small">Save status</button>
+            </form>
+          </div>
+        </dialog>
+      <?php endforeach; ?>
     </main>
   </div>
 </body>

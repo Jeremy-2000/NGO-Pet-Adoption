@@ -257,14 +257,24 @@ class AnimalRepository
 
     private function animalPayload(int $shelterId, array $data): array
     {
+        $age = substr(trim((string) ($data['age'] ?? '')), 0, 80) ?: null;
+        $ageValue = trim((string) ($data['age_value'] ?? ''));
+        $ageUnit = trim((string) ($data['age_unit'] ?? ''));
+
+        if ($ageValue !== '' && in_array($ageUnit, ['weeks', 'months', 'years'], true)) {
+            $ageNumber = max(0, (int) $ageValue);
+            $unit = $ageNumber === 1 ? rtrim($ageUnit, 's') : $ageUnit;
+            $age = $ageNumber . ' ' . $unit;
+        }
+
         return [
             'shelter_id' => $shelterId,
             'name' => substr(trim((string) ($data['name'] ?? '')), 0, 120),
             'species' => substr(trim((string) ($data['species'] ?? '')), 0, 80),
             'breed' => substr(trim((string) ($data['breed'] ?? '')), 0, 120) ?: null,
-            'age' => substr(trim((string) ($data['age'] ?? '')), 0, 80) ?: null,
-            'gender' => substr(trim((string) ($data['gender'] ?? '')), 0, 20) ?: null,
-            'size' => substr(trim((string) ($data['size'] ?? '')), 0, 30) ?: null,
+            'age' => $age,
+            'gender' => in_array(($data['gender'] ?? ''), ['Female', 'Male', 'Unknown'], true) ? $data['gender'] : null,
+            'size' => in_array(($data['size'] ?? ''), ['Small', 'Medium', 'Large', 'Extra large'], true) ? $data['size'] : null,
             'color' => substr(trim((string) ($data['color'] ?? '')), 0, 80) ?: null,
             'status' => in_array(($data['status'] ?? ''), ['available', 'reserved', 'adopted', 'medical_hold'], true) ? $data['status'] : 'available',
             'good_with_children' => !empty($data['good_with_children']) ? 1 : 0,
