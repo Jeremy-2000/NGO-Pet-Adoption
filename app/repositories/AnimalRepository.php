@@ -20,7 +20,7 @@ class AnimalRepository
         $count->execute($params);
 
         $sql = "SELECT a.*, s.name AS shelter_name, s.slug AS shelter_slug, s.city, s.region, s.country,
-                ai.file_path AS image_path, ai.thumbnail_path AS thumbnail_path,
+                ai.file_path AS image_path, ai.thumbnail_path AS thumbnail_path, ai.crop_focus AS image_crop_focus,
                 (SELECT COUNT(*) FROM votes v WHERE v.winner_animal_id = a.id) AS vote_wins
             FROM animals a
             INNER JOIN shelters s ON s.id = a.shelter_id
@@ -48,7 +48,7 @@ class AnimalRepository
     {
         $limit = max(1, min(24, $limit));
         $sql = "SELECT a.*, s.name AS shelter_name, s.slug AS shelter_slug, s.city, s.country,
-                ai.file_path AS image_path, ai.thumbnail_path AS thumbnail_path,
+                ai.file_path AS image_path, ai.thumbnail_path AS thumbnail_path, ai.crop_focus AS image_crop_focus,
                 (SELECT COUNT(*) FROM votes v WHERE v.winner_animal_id = a.id) AS vote_wins
             FROM animals a
             INNER JOIN shelters s ON s.id = a.shelter_id
@@ -74,7 +74,7 @@ class AnimalRepository
                     (SELECT COUNT(*) FROM votes v WHERE v.winner_animal_id = a.id) AS vote_wins
             FROM animals a
             INNER JOIN shelters s ON s.id = a.shelter_id
-            WHERE a.id = ? AND s.status = 'approved'
+            WHERE a.id = ? AND s.status = 'approved' AND a.status NOT IN ('archived', 'rejected')
             LIMIT 1"
         );
         $statement->execute([$id]);
@@ -127,7 +127,7 @@ class AnimalRepository
         $limit = max(1, min(120, $limit));
         $statement = $this->pdo->prepare(
             "SELECT a.*, s.name AS shelter_name, s.slug AS shelter_slug, s.city, s.region, s.country,
-                    ai.file_path AS image_path, ai.thumbnail_path AS thumbnail_path,
+                    ai.file_path AS image_path, ai.thumbnail_path AS thumbnail_path, ai.crop_focus AS image_crop_focus,
                     (SELECT COUNT(*) FROM votes v WHERE v.winner_animal_id = a.id) AS vote_wins
             FROM animals a
             INNER JOIN shelters s ON s.id = a.shelter_id
@@ -177,12 +177,44 @@ class AnimalRepository
         $statement->execute($payload);
     }
 
+    public function previewFromData(int $shelterId, array $shelter, array $data): array
+    {
+        $payload = $this->animalPayload($shelterId, $data);
+
+        return array_merge($payload, [
+            'id' => (int) ($data['animal_id'] ?? 0),
+            'shelter_name' => (string) ($shelter['name'] ?? 'Shelter preview'),
+            'shelter_slug' => (string) ($shelter['slug'] ?? ''),
+            'shelter_description' => (string) ($shelter['description'] ?? ''),
+            'contact_email' => (string) ($shelter['contact_email'] ?? ''),
+            'contact_phone' => (string) ($shelter['contact_phone'] ?? ''),
+            'website' => (string) ($shelter['website'] ?? ''),
+            'facebook_url' => (string) ($shelter['facebook_url'] ?? ''),
+            'instagram_url' => (string) ($shelter['instagram_url'] ?? ''),
+            'city' => (string) ($shelter['city'] ?? ''),
+            'region' => (string) ($shelter['region'] ?? ''),
+            'country' => (string) ($shelter['country'] ?? ''),
+            'logo_path' => (string) ($shelter['logo_path'] ?? ''),
+            'views_count' => 0,
+            'favorites_count' => 0,
+            'vote_wins' => 0,
+            'is_featured' => 0,
+            'created_at' => date('Y-m-d H:i:s'),
+            'updated_at' => date('Y-m-d H:i:s'),
+        ]);
+    }
+
     public function createFavorite(int $animalId, ?int $userId, string $sessionId): bool
     {
-        $statement = $this->pdo->prepare('SELECT id FROM favorites WHERE animal_id = ? AND (user_id = ? OR session_id = ?) LIMIT 1');
+        $statement = $this->pdo->prepare('SELECT id, user_id FROM favorites WHERE animal_id = ? AND (user_id = ? OR session_id = ?) LIMIT 1');
         $statement->execute([$animalId, $userId, $sessionId]);
+        $favorite = $statement->fetch();
 
-        if ($statement->fetch()) {
+        if ($favorite) {
+            if ($userId !== null && empty($favorite['user_id'])) {
+                $this->pdo->prepare('UPDATE favorites SET user_id = ? WHERE id = ?')->execute([$userId, (int) $favorite['id']]);
+            }
+
             return false;
         }
 
@@ -191,6 +223,140 @@ class AnimalRepository
         $this->pdo->prepare('UPDATE animals SET favorites_count = favorites_count + 1 WHERE id = ?')->execute([$animalId]);
 
         return true;
+    }
+
+    public function favoriteIds(?int $userId, string $sessionId): array
+    {
+        if ($userId !== null) {
+            $statement = $this->pdo->prepare('SELECT animal_id FROM favorites WHERE user_id = ?');
+            $statement->execute([$userId]);
+        } else {
+            $statement = $this->pdo->prepare('SELECT animal_id FROM favorites WHERE session_id = ?');
+            $statement->execute([$sessionId]);
+        }
+
+        return array_map('intval', $statement->fetchAll(PDO::FETCH_COLUMN));
+    }
+
+    public function favoritesForViewer(?int $userId, string $sessionId, int $limit = 30): array
+    {
+        $limit = max(1, min(60, $limit));
+        $identityWhere = $userId !== null ? 'f.user_id = ?' : 'f.session_id = ?';
+        $identity = $userId !== null ? $userId : $sessionId;
+        $statement = $this->pdo->prepare(
+            "SELECT a.*, s.name AS shelter_name, s.slug AS shelter_slug, ai.file_path AS image_path, ai.thumbnail_path AS thumbnail_path, ai.crop_focus AS image_crop_focus, f.created_at AS favorited_at
+            FROM favorites f
+            INNER JOIN animals a ON a.id = f.animal_id
+            INNER JOIN shelters s ON s.id = a.shelter_id
+            LEFT JOIN animal_images ai ON ai.id = (
+                SELECT ai2.id FROM animal_images ai2 WHERE ai2.animal_id = a.id ORDER BY ai2.sort_order ASC, ai2.id ASC LIMIT 1
+            )
+            WHERE {$identityWhere} AND s.status = 'approved' AND a.status NOT IN ('archived', 'rejected')
+            ORDER BY f.created_at DESC
+            LIMIT {$limit}"
+        );
+        $statement->execute([$identity]);
+
+        return $statement->fetchAll();
+    }
+
+    public function recordRecentlyViewed(int $animalId, ?int $userId, string $sessionId): void
+    {
+        if ($userId !== null) {
+            $this->pdo->prepare('DELETE FROM recently_viewed WHERE user_id = ? AND animal_id = ?')->execute([$userId, $animalId]);
+        } else {
+            $this->pdo->prepare('DELETE FROM recently_viewed WHERE session_id = ? AND animal_id = ?')->execute([$sessionId, $animalId]);
+        }
+
+        $statement = $this->pdo->prepare('INSERT INTO recently_viewed (animal_id, user_id, session_id) VALUES (?, ?, ?)');
+        $statement->execute([$animalId, $userId, $userId === null ? $sessionId : null]);
+    }
+
+    public function recentlyViewedForViewer(?int $userId, string $sessionId, int $limit = 8): array
+    {
+        $limit = max(1, min(24, $limit));
+        $identityWhere = $userId !== null ? 'rv.user_id = ?' : 'rv.session_id = ?';
+        $identity = $userId !== null ? $userId : $sessionId;
+        $statement = $this->pdo->prepare(
+            "SELECT a.*, s.name AS shelter_name, s.slug AS shelter_slug, ai.file_path AS image_path, ai.thumbnail_path AS thumbnail_path, ai.crop_focus AS image_crop_focus, rv.viewed_at
+            FROM recently_viewed rv
+            INNER JOIN animals a ON a.id = rv.animal_id
+            INNER JOIN shelters s ON s.id = a.shelter_id
+            LEFT JOIN animal_images ai ON ai.id = (
+                SELECT ai2.id FROM animal_images ai2 WHERE ai2.animal_id = a.id ORDER BY ai2.sort_order ASC, ai2.id ASC LIMIT 1
+            )
+            WHERE {$identityWhere} AND s.status = 'approved' AND a.status NOT IN ('archived', 'rejected')
+            ORDER BY rv.viewed_at DESC
+            LIMIT {$limit}"
+        );
+        $statement->execute([$identity]);
+
+        return $statement->fetchAll();
+    }
+
+    public function suggestedForUser(int $userId, int $limit = 8): array
+    {
+        $limit = max(1, min(24, $limit));
+        $statement = $this->pdo->prepare('SELECT * FROM user_preferences WHERE user_id = ? LIMIT 1');
+        $statement->execute([$userId]);
+        $preferences = $statement->fetch() ?: [];
+        $where = ["s.status = 'approved'", "a.status IN ('available', 'reserved', 'medical_hold')"];
+        $params = [];
+
+        foreach (['preferred_species' => 'species', 'preferred_size' => 'size'] as $preference => $field) {
+            $value = trim((string) ($preferences[$preference] ?? ''));
+
+            if ($value !== '') {
+                $where[] = 'a.' . $field . ' = ?';
+                $params[] = $value;
+            }
+        }
+
+        if (!empty($preferences['has_children'])) {
+            $where[] = 'a.good_with_children = 1';
+        }
+
+        if (!empty($preferences['has_pets'])) {
+            $where[] = '(a.good_with_dogs = 1 OR a.good_with_cats = 1)';
+        }
+
+        $sql = "SELECT a.*, s.name AS shelter_name, s.slug AS shelter_slug, ai.file_path AS image_path, ai.thumbnail_path AS thumbnail_path, ai.crop_focus AS image_crop_focus
+            FROM animals a
+            INNER JOIN shelters s ON s.id = a.shelter_id
+            LEFT JOIN animal_images ai ON ai.id = (
+                SELECT ai2.id FROM animal_images ai2 WHERE ai2.animal_id = a.id ORDER BY ai2.sort_order ASC, ai2.id ASC LIMIT 1
+            )
+            WHERE " . implode(' AND ', $where) . "
+            ORDER BY a.is_featured DESC, a.created_at DESC
+            LIMIT {$limit}";
+        $suggested = $this->pdo->prepare($sql);
+        $suggested->execute($params);
+
+        return $suggested->fetchAll();
+    }
+
+    public function updateImageSettings(int $animalId, array $imageSettings): void
+    {
+        $statement = $this->pdo->prepare(
+            "UPDATE animal_images
+            SET sort_order = ?, crop_focus = ?
+            WHERE id = ? AND animal_id = ?"
+        );
+
+        foreach ($imageSettings as $imageId => $settings) {
+            $cropFocus = (string) ($settings['crop_focus'] ?? 'center');
+
+            if (!in_array($cropFocus, ['center', 'top', 'bottom', 'left', 'right'], true)) {
+                $cropFocus = 'center';
+            }
+
+            $statement->execute([
+                max(0, (int) ($settings['sort_order'] ?? 100)),
+                $cropFocus,
+                (int) $imageId,
+                $animalId,
+            ]);
+        }
     }
 
     public function votePair(): ?array
@@ -276,7 +442,7 @@ class AnimalRepository
             'gender' => in_array(($data['gender'] ?? ''), ['Female', 'Male', 'Unknown'], true) ? $data['gender'] : null,
             'size' => in_array(($data['size'] ?? ''), ['Small', 'Medium', 'Large', 'Extra large'], true) ? $data['size'] : null,
             'color' => substr(trim((string) ($data['color'] ?? '')), 0, 80) ?: null,
-            'status' => in_array(($data['status'] ?? ''), ['available', 'reserved', 'adopted', 'medical_hold'], true) ? $data['status'] : 'available',
+            'status' => in_array(($data['status'] ?? ''), animal_statuses(), true) ? $data['status'] : 'available',
             'good_with_children' => !empty($data['good_with_children']) ? 1 : 0,
             'good_with_dogs' => !empty($data['good_with_dogs']) ? 1 : 0,
             'good_with_cats' => !empty($data['good_with_cats']) ? 1 : 0,

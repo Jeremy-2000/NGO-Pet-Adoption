@@ -48,30 +48,36 @@ $success = flash('success');
       <a class="brand inverse" href="<?php echo e(url('/admin/dashboard.php')); ?>"><span class="brand-mark">PA</span>Pet Adoption</a>
       <nav>
         <a href="<?php echo e(url('/admin/dashboard.php')); ?>">Dashboard</a>
+        <a href="<?php echo e(url('/admin/search.php')); ?>">Search</a>
         <a class="active" href="<?php echo e(url('/admin/shelters.php')); ?>">Shelters</a>
         <a href="<?php echo e(url('/admin/animals.php')); ?>">Animals</a>
         <a href="<?php echo e(url('/admin/reports.php')); ?>">Reports</a>
+        <a href="<?php echo e(url('/admin/activity.php')); ?>">Activity</a>
+        <a href="<?php echo e(url('/admin/taxonomy.php')); ?>">Taxonomy</a>
         <a href="<?php echo e(url('/logout.php')); ?>">Logout</a>
       </nav>
     </aside>
     <main class="content">
-      <header class="page-header"><div><p class="eyebrow">Moderation</p><h1>Shelter applications</h1></div></header>
+      <header class="page-header">
+        <div><p class="eyebrow">Moderation</p><h1>Shelter applications</h1></div>
+        <a class="btn secondary" href="<?php echo e(url('/admin/export.php?type=shelters')); ?>">Export CSV</a>
+      </header>
       <?php if ($success) : ?><div class="alert alert-success"><?php echo e($success); ?></div><?php endif; ?>
       <?php if ($error !== '') : ?><div class="alert alert-error"><?php echo e($error); ?></div><?php endif; ?>
       <section class="card">
         <div class="table-wrap">
-          <table class="table" data-enhanced-table data-table-empty="No shelter applications match these filters.">
+          <table class="table" data-enhanced-table data-table-key="admin-shelters" data-table-empty="No shelter applications match these filters.">
             <thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Location</th><th data-no-filter="true" data-no-sort="true">Action</th></tr></thead>
             <tbody>
               <?php foreach ($shelters as $shelter) : ?>
                 <tr>
                   <td><strong><?php echo e($shelter['name']); ?></strong><br><span class="muted"><?php echo e(excerpt($shelter['description'], 90)); ?></span></td>
                   <td><?php echo e($shelter['email']); ?></td>
-                  <td><?php echo e(status_label($shelter['status'])); ?></td>
+                  <td><span class="badge <?php echo e(status_badge_class($shelter['status'])); ?>"><?php echo e(status_label($shelter['status'])); ?></span></td>
                   <td><?php echo e($shelter['city'] ?: $shelter['country'] ?: 'Not listed'); ?></td>
                   <td class="table-actions">
                     <button class="btn secondary small" type="button" data-open-dialog="shelter-dialog-<?php echo e($shelter['id']); ?>">Open</button>
-                    <form method="post" class="inline-form">
+                    <form method="post" class="inline-form" data-confirm="Save this shelter status change?">
                       <input type="hidden" name="csrf_token" value="<?php echo e(csrfToken()); ?>">
                       <input type="hidden" name="shelter_id" value="<?php echo e($shelter['id']); ?>">
                       <select class="input compact-input" name="status">
@@ -100,7 +106,7 @@ $success = flash('success');
               <button class="dialog-close" type="button" data-close-dialog>Close</button>
             </header>
             <div class="detail-list">
-              <div><span>Status</span><strong><?php echo e(status_label($shelter['status'])); ?></strong></div>
+              <div><span>Status</span><strong><span class="badge <?php echo e(status_badge_class($shelter['status'])); ?>"><?php echo e(status_label($shelter['status'])); ?></span></strong></div>
               <div><span>Email</span><strong><?php echo e($shelter['email']); ?></strong></div>
               <div><span>Phone</span><strong><?php echo e($shelter['contact_phone'] ?: 'Not listed'); ?></strong></div>
               <div><span>Location</span><strong><?php echo e(trim(($shelter['city'] ?: '') . ' ' . ($shelter['region'] ?: '') . ' ' . ($shelter['country'] ?: '')) ?: 'Not listed'); ?></strong></div>
@@ -110,7 +116,7 @@ $success = flash('success');
               <h3>Description</h3>
               <p class="dialog-copy"><?php echo nl2br(e($shelter['description'] ?: 'No description submitted.')); ?></p>
             </section>
-            <form method="post" class="inline-form">
+            <form method="post" class="inline-form" data-confirm="Save this shelter status change?">
               <input type="hidden" name="csrf_token" value="<?php echo e(csrfToken()); ?>">
               <input type="hidden" name="shelter_id" value="<?php echo e($shelter['id']); ?>">
               <select class="input compact-input" name="status">

@@ -13,7 +13,7 @@ try {
         $status = (string) ($_POST['status'] ?? 'available');
         $featured = isset($_POST['is_featured']) ? 1 : 0;
 
-        if (in_array($status, ['available', 'reserved', 'adopted', 'medical_hold'], true)) {
+        if (in_array($status, animal_statuses(), true)) {
             $pdo->prepare('UPDATE animals SET status = ?, is_featured = ? WHERE id = ?')->execute([$status, $featured, $id]);
             audit_log($pdo, 'animal.moderated', 'animal', $id, ['status' => $status, 'is_featured' => $featured]);
             flash('success', 'Animal listing updated.');
@@ -50,34 +50,40 @@ $success = flash('success');
       <a class="brand inverse" href="<?php echo e(url('/admin/dashboard.php')); ?>"><span class="brand-mark">PA</span>Pet Adoption</a>
       <nav>
         <a href="<?php echo e(url('/admin/dashboard.php')); ?>">Dashboard</a>
+        <a href="<?php echo e(url('/admin/search.php')); ?>">Search</a>
         <a href="<?php echo e(url('/admin/shelters.php')); ?>">Shelters</a>
         <a class="active" href="<?php echo e(url('/admin/animals.php')); ?>">Animals</a>
         <a href="<?php echo e(url('/admin/reports.php')); ?>">Reports</a>
+        <a href="<?php echo e(url('/admin/activity.php')); ?>">Activity</a>
+        <a href="<?php echo e(url('/admin/taxonomy.php')); ?>">Taxonomy</a>
         <a href="<?php echo e(url('/logout.php')); ?>">Logout</a>
       </nav>
     </aside>
     <main class="content">
-      <header class="page-header"><div><p class="eyebrow">Moderation</p><h1>Animal listings</h1></div></header>
+      <header class="page-header">
+        <div><p class="eyebrow">Moderation</p><h1>Animal listings</h1></div>
+        <a class="btn secondary" href="<?php echo e(url('/admin/export.php?type=animals')); ?>">Export CSV</a>
+      </header>
       <?php if ($success) : ?><div class="alert alert-success"><?php echo e($success); ?></div><?php endif; ?>
       <section class="card">
         <div class="table-wrap">
-          <table class="table" data-enhanced-table data-table-empty="No animal listings match these filters.">
+          <table class="table" data-enhanced-table data-table-key="admin-animals" data-table-empty="No animal listings match these filters.">
             <thead><tr><th>Name</th><th>Shelter</th><th>Status</th><th>Species</th><th>Size</th><th>Engagement</th><th data-no-filter="true" data-no-sort="true">Action</th></tr></thead>
             <tbody>
               <?php foreach ($animals as $animal) : ?>
                 <tr>
                   <td><strong><?php echo e($animal['name']); ?></strong><br><span class="muted"><?php echo e($animal['species']); ?> - <?php echo e($animal['breed'] ?: 'Mixed breed'); ?></span></td>
                   <td><?php echo e($animal['shelter_name']); ?></td>
-                  <td><?php echo e(status_label($animal['status'])); ?><?php echo (int) $animal['is_featured'] === 1 ? ' / Featured' : ''; ?></td>
+                  <td><span class="badge <?php echo e(status_badge_class($animal['status'])); ?>"><?php echo e(status_label($animal['status'])); ?></span><?php echo (int) $animal['is_featured'] === 1 ? ' / Featured' : ''; ?></td>
                   <td><?php echo e($animal['species']); ?></td>
                   <td><?php echo e($animal['size'] ?: 'Not listed'); ?></td>
                   <td><?php echo e($animal['views_count']); ?> views<br><?php echo e($animal['favorites_count']); ?> favorites</td>
                   <td class="table-actions">
-                    <form method="post" class="inline-form">
+                    <form method="post" class="inline-form" data-confirm="Save this listing moderation change?">
                       <input type="hidden" name="csrf_token" value="<?php echo e(csrfToken()); ?>">
                       <input type="hidden" name="animal_id" value="<?php echo e($animal['id']); ?>">
                       <select class="input compact-input" name="status">
-                        <?php foreach (['available', 'reserved', 'adopted', 'medical_hold'] as $status) : ?>
+                        <?php foreach (animal_statuses() as $status) : ?>
                           <option value="<?php echo e($status); ?>" <?php echo selected($animal['status'], $status); ?>><?php echo e(status_label($status)); ?></option>
                         <?php endforeach; ?>
                       </select>

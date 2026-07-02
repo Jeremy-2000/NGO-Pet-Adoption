@@ -33,7 +33,7 @@ try {
             $redirect = match ((string) $user['role']) {
                 'admin' => '/admin/dashboard.php',
                 'shelter' => '/shelter/dashboard.php',
-                default => '/',
+                default => '/account.php',
             };
             redirect($redirect);
         }
@@ -72,7 +72,7 @@ try {
       </label>
       <button type="submit" class="btn green">Sign in</button>
     </form>
-    <p class="muted">Shelter not registered? <a href="<?php echo e(url('/register.php')); ?>">Apply here</a>.</p>
+    <p class="muted">New here? <a href="<?php echo e(url('/register.php')); ?>">Create an adopter account</a> or <a href="<?php echo e(url('/register.php?type=shelter')); ?>">apply as a shelter</a>.</p>
   </main>
 </body>
 </html>

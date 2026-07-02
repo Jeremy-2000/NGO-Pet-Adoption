@@ -46,7 +46,11 @@ try {
         <a href="<?php echo e(url('/vote.php')); ?>">Vote</a>
       </nav>
       <div class="actions">
-        <a class="btn secondary" href="<?php echo e(url('/login.php')); ?>">Sign in</a>
+        <?php if (isLoggedIn()) : ?>
+          <a class="btn secondary" href="<?php echo e(url(currentUser()['role'] === 'visitor' ? '/account.php' : (currentUser()['role'] === 'shelter' ? '/shelter/dashboard.php' : '/admin/dashboard.php'))); ?>">Dashboard</a>
+        <?php else : ?>
+          <a class="btn secondary" href="<?php echo e(url('/login.php')); ?>">Sign in</a>
+        <?php endif; ?>
         <a class="btn green" href="<?php echo e(url('/animals.php')); ?>">Find a pet</a>
       </div>
     </div>
@@ -82,7 +86,7 @@ try {
         </div>
         <div class="hero-card" data-animate>
           <?php if ($heroAnimal && ($heroAnimal['image_path'] ?? '')) : ?>
-            <img src="<?php echo e(uploaded_url($heroAnimal['image_path'])); ?>" alt="<?php echo e($heroAnimal['name']); ?>" loading="eager">
+            <img src="<?php echo e(uploaded_url($heroAnimal['image_path'])); ?>" alt="<?php echo e($heroAnimal['name']); ?>" loading="eager" style="object-position: <?php echo e($heroAnimal['image_crop_focus'] ?? 'center'); ?>;">
           <?php else : ?>
             <div class="image-placeholder large">No image yet</div>
           <?php endif; ?>
@@ -118,7 +122,7 @@ try {
                   <span class="badge promoted">Promoted</span>
                 <?php endif; ?>
                 <?php if ($animal['thumbnail_path'] ?? $animal['image_path'] ?? '') : ?>
-                  <img src="<?php echo e(uploaded_url($animal['thumbnail_path'] ?: $animal['image_path'])); ?>" alt="<?php echo e($animal['name']); ?>" loading="lazy">
+                  <img src="<?php echo e(uploaded_url($animal['thumbnail_path'] ?: $animal['image_path'])); ?>" alt="<?php echo e($animal['name']); ?>" loading="lazy" style="object-position: <?php echo e($animal['image_crop_focus'] ?? 'center'); ?>;">
                 <?php else : ?>
                   <div class="image-placeholder"><?php echo e($animal['species']); ?></div>
                 <?php endif; ?>
@@ -126,7 +130,7 @@ try {
               <div class="card-body">
                 <div class="card-title">
                   <h3><?php echo e($animal['name']); ?></h3>
-                  <span class="badge <?php echo e($animal['status'] === 'medical_hold' ? 'hold' : 'available'); ?>"><?php echo e(status_label($animal['status'])); ?></span>
+                  <span class="badge <?php echo e(status_badge_class($animal['status'])); ?>"><?php echo e(status_label($animal['status'])); ?></span>
                 </div>
                 <p class="muted"><?php echo e($animal['species']); ?> - <?php echo e($animal['breed'] ?: 'Mixed breed'); ?> - <?php echo e($animal['shelter_name']); ?></p>
                 <div class="meta">

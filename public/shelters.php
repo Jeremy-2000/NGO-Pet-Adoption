@@ -28,7 +28,13 @@ try {
         <a class="active" href="<?php echo e(url('/shelters.php')); ?>">Shelters</a>
         <a href="<?php echo e(url('/vote.php')); ?>">Vote</a>
       </nav>
-      <div class="actions"><a class="btn secondary" href="<?php echo e(url('/login.php')); ?>">Sign in</a></div>
+      <div class="actions">
+        <?php if (isLoggedIn()) : ?>
+          <a class="btn secondary" href="<?php echo e(url(currentUser()['role'] === 'visitor' ? '/account.php' : (currentUser()['role'] === 'shelter' ? '/shelter/dashboard.php' : '/admin/dashboard.php'))); ?>">Dashboard</a>
+        <?php else : ?>
+          <a class="btn secondary" href="<?php echo e(url('/login.php')); ?>">Sign in</a>
+        <?php endif; ?>
+      </div>
     </div>
   </header>
 
@@ -42,6 +48,12 @@ try {
 
     <section class="section">
       <div class="wrap grid cards">
+        <?php if ($shelters === []) : ?>
+          <div class="empty-state">
+            <h2>No approved shelters yet.</h2>
+            <p class="muted">Approved shelter applications will appear here automatically.</p>
+          </div>
+        <?php endif; ?>
         <?php foreach ($shelters as $shelter) : ?>
           <article class="panel shelter-card" data-animate>
             <div class="shelter-card-head">

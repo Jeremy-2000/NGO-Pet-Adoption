@@ -41,5 +41,7 @@ return [
         'vote' => ['attempts' => 20, 'decay_seconds' => 3600],
         'favorite' => ['attempts' => 30, 'decay_seconds' => 3600],
         'report' => ['attempts' => 3, 'decay_seconds' => 3600],
+        'application' => ['attempts' => 4, 'decay_seconds' => 3600],
+        'signup' => ['attempts' => 6, 'decay_seconds' => 3600],
     ],
 ];

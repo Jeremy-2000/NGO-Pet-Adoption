@@ -278,6 +278,52 @@ function status_label(string $status): string
     return ucwords(str_replace('_', ' ', $status));
 }
 
+function status_badge_class(string $status): string
+{
+    return match ($status) {
+        'approved', 'available', 'active', 'completed', 'resolved' => 'approved',
+        'adopted' => 'adopted',
+        'reserved', 'contacted', 'reviewing', 'viewing_scheduled' => 'pending',
+        'applied', 'pending', 'pending_review', 'new', 'open', 'scheduled' => 'pending',
+        'rejected', 'declined', 'cancelled', 'closed', 'suspended' => 'rejected',
+        'archived' => 'archived',
+        'medical_hold', 'reviewed' => 'hold',
+        default => 'neutral',
+    };
+}
+
+function animal_statuses(): array
+{
+    return ['available', 'reserved', 'medical_hold', 'adopted', 'archived', 'rejected'];
+}
+
+function inquiry_statuses(): array
+{
+    return ['new', 'contacted', 'viewing_scheduled', 'approved', 'declined', 'completed', 'closed'];
+}
+
+function application_statuses(): array
+{
+    return ['new', 'reviewing', 'contacted', 'viewing_scheduled', 'approved', 'declined', 'completed', 'cancelled'];
+}
+
+function taxonomy_values(PDO $pdo, string $type, array $fallback): array
+{
+    if (!preg_match('/^[a-zA-Z0-9_]+$/', $type) || !db_table_exists('taxonomies')) {
+        return $fallback;
+    }
+
+    try {
+        $statement = $pdo->prepare('SELECT value FROM taxonomies WHERE type = ? AND is_active = 1 ORDER BY sort_order ASC, value ASC');
+        $statement->execute([$type]);
+        $values = array_map(static fn (array $row): string => (string) $row['value'], $statement->fetchAll());
+
+        return $values === [] ? $fallback : $values;
+    } catch (Throwable) {
+        return $fallback;
+    }
+}
+
 function bool_label(mixed $value): string
 {
     return (int) $value === 1 ? 'Yes' : 'No';
@@ -324,4 +370,45 @@ function excerpt(?string $value, int $length = 140): string
     }
 
     return strlen($value) > $length ? substr($value, 0, $length - 1) . '...' : $value;
+}
+
+function preview_store(string $type, array $payload): string
+{
+    $token = bin2hex(random_bytes(24));
+    $_SESSION['preview_tokens'][$token] = [
+        'type' => $type,
+        'payload' => $payload,
+        'expires_at' => time() + 1800,
+    ];
+
+    foreach ((array) ($_SESSION['preview_tokens'] ?? []) as $storedToken => $preview) {
+        if ((int) ($preview['expires_at'] ?? 0) < time()) {
+            unset($_SESSION['preview_tokens'][$storedToken]);
+        }
+    }
+
+    return $token;
+}
+
+function preview_payload(string $type, ?string $token = null): ?array
+{
+    $token = $token ?? (string) ($_GET['preview'] ?? '');
+
+    if (!preg_match('/^[a-f0-9]{32,64}$/', $token)) {
+        return null;
+    }
+
+    $preview = $_SESSION['preview_tokens'][$token] ?? null;
+
+    if (!is_array($preview) || (int) ($preview['expires_at'] ?? 0) < time()) {
+        unset($_SESSION['preview_tokens'][$token]);
+
+        return null;
+    }
+
+    if ((string) ($preview['type'] ?? '') !== $type) {
+        return null;
+    }
+
+    return is_array($preview['payload'] ?? null) ? $preview['payload'] : null;
 }

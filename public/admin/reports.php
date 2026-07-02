@@ -50,18 +50,24 @@ $success = flash('success');
       <a class="brand inverse" href="<?php echo e(url('/admin/dashboard.php')); ?>"><span class="brand-mark">PA</span>Pet Adoption</a>
       <nav>
         <a href="<?php echo e(url('/admin/dashboard.php')); ?>">Dashboard</a>
+        <a href="<?php echo e(url('/admin/search.php')); ?>">Search</a>
         <a href="<?php echo e(url('/admin/shelters.php')); ?>">Shelters</a>
         <a href="<?php echo e(url('/admin/animals.php')); ?>">Animals</a>
         <a class="active" href="<?php echo e(url('/admin/reports.php')); ?>">Reports</a>
+        <a href="<?php echo e(url('/admin/activity.php')); ?>">Activity</a>
+        <a href="<?php echo e(url('/admin/taxonomy.php')); ?>">Taxonomy</a>
         <a href="<?php echo e(url('/logout.php')); ?>">Logout</a>
       </nav>
     </aside>
     <main class="content">
-      <header class="page-header"><div><p class="eyebrow">Moderation</p><h1>Reports</h1></div></header>
+      <header class="page-header">
+        <div><p class="eyebrow">Moderation</p><h1>Reports</h1></div>
+        <a class="btn secondary" href="<?php echo e(url('/admin/export.php?type=reports')); ?>">Export CSV</a>
+      </header>
       <?php if ($success) : ?><div class="alert alert-success"><?php echo e($success); ?></div><?php endif; ?>
       <section class="card">
         <div class="table-wrap">
-          <table class="table" data-enhanced-table data-table-empty="No reports match these filters.">
+          <table class="table" data-enhanced-table data-table-key="admin-reports" data-table-empty="No reports match these filters.">
             <thead><tr><th>Reporter</th><th>Target</th><th>Reason</th><th>Status</th><th data-no-filter="true" data-no-sort="true">Action</th></tr></thead>
             <tbody>
               <?php foreach ($reports as $report) : ?>
@@ -69,10 +75,10 @@ $success = flash('success');
                   <td><strong><?php echo e($report['reporter_name']); ?></strong><br><a href="mailto:<?php echo e($report['reporter_email']); ?>"><?php echo e($report['reporter_email']); ?></a></td>
                   <td><?php echo e($report['animal_name'] ?: 'General'); ?><br><span class="muted"><?php echo e($report['shelter_name'] ?: 'No shelter'); ?></span></td>
                   <td><?php echo e(excerpt($report['reason'], 180)); ?></td>
-                  <td><?php echo e(status_label($report['status'])); ?></td>
+                  <td><span class="badge <?php echo e(status_badge_class($report['status'])); ?>"><?php echo e(status_label($report['status'])); ?></span></td>
                   <td class="table-actions">
                     <button class="btn secondary small" type="button" data-open-dialog="report-dialog-<?php echo e($report['id']); ?>">Open</button>
-                    <form method="post" class="inline-form">
+                    <form method="post" class="inline-form" data-confirm="Save this report status change?">
                       <input type="hidden" name="csrf_token" value="<?php echo e(csrfToken()); ?>">
                       <input type="hidden" name="report_id" value="<?php echo e($report['id']); ?>">
                       <select class="input compact-input" name="status">
@@ -104,14 +110,14 @@ $success = flash('success');
               <div><span>Reporter</span><strong><?php echo e($report['reporter_name']); ?></strong></div>
               <div><span>Email</span><strong><a href="mailto:<?php echo e($report['reporter_email']); ?>"><?php echo e($report['reporter_email']); ?></a></strong></div>
               <div><span>Shelter</span><strong><?php echo e($report['shelter_name'] ?: 'No shelter'); ?></strong></div>
-              <div><span>Status</span><strong><?php echo e(status_label($report['status'])); ?></strong></div>
+              <div><span>Status</span><strong><span class="badge <?php echo e(status_badge_class($report['status'])); ?>"><?php echo e(status_label($report['status'])); ?></span></strong></div>
               <div><span>Submitted</span><strong><?php echo e($report['created_at']); ?></strong></div>
             </div>
             <section>
               <h3>Reason</h3>
               <p class="dialog-copy"><?php echo nl2br(e($report['reason'])); ?></p>
             </section>
-            <form method="post" class="inline-form">
+            <form method="post" class="inline-form" data-confirm="Save this report status change?">
               <input type="hidden" name="csrf_token" value="<?php echo e(csrfToken()); ?>">
               <input type="hidden" name="report_id" value="<?php echo e($report['id']); ?>">
               <select class="input compact-input" name="status">

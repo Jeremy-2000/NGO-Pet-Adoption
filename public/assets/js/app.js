@@ -1,5 +1,116 @@
 document.addEventListener('DOMContentLoaded', () => {
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const confirmDialog = document.createElement('dialog');
+  confirmDialog.className = 'app-dialog confirm-dialog';
+  confirmDialog.innerHTML = `
+    <div class="dialog-shell">
+      <header class="dialog-header">
+        <div>
+          <p class="eyebrow">Confirm</p>
+          <h2 data-confirm-title>Continue?</h2>
+        </div>
+        <button class="dialog-close" type="button" data-confirm-cancel>Close</button>
+      </header>
+      <p class="dialog-copy" data-confirm-message></p>
+      <div class="dialog-actions">
+        <button class="btn secondary" type="button" data-confirm-cancel>Cancel</button>
+        <button class="btn green" type="button" data-confirm-accept>Confirm</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(confirmDialog);
+
+  const askConfirm = (message) => new Promise((resolve) => {
+    if (typeof confirmDialog.showModal !== 'function') {
+      resolve(window.confirm(message || 'Are you sure?'));
+      return;
+    }
+
+    confirmDialog.querySelector('[data-confirm-message]').textContent = message || 'Are you sure?';
+    const accept = confirmDialog.querySelector('[data-confirm-accept]');
+    const cancelButtons = confirmDialog.querySelectorAll('[data-confirm-cancel]');
+    const cleanup = (value) => {
+      accept.removeEventListener('click', onAccept);
+      cancelButtons.forEach((button) => button.removeEventListener('click', onCancel));
+      confirmDialog.removeEventListener('cancel', onCancel);
+      confirmDialog.removeEventListener('close', onClose);
+
+      if (confirmDialog.open) {
+        confirmDialog.close();
+      }
+
+      resolve(value);
+    };
+    const onAccept = () => cleanup(true);
+    const onCancel = () => cleanup(false);
+    const onClose = () => cleanup(false);
+
+    accept.addEventListener('click', onAccept);
+    cancelButtons.forEach((button) => button.addEventListener('click', onCancel));
+    confirmDialog.addEventListener('cancel', onCancel);
+    confirmDialog.addEventListener('close', onClose);
+
+    confirmDialog.showModal();
+  });
+
+  document.addEventListener('submit', async (event) => {
+    const form = event.target;
+    const submitter = event.submitter;
+    const message = submitter?.dataset.confirm || form.dataset.confirm;
+
+    if (!message || form.dataset.confirmed === '1') return;
+
+    event.preventDefault();
+
+    if (await askConfirm(message)) {
+      form.dataset.confirmed = '1';
+      form.requestSubmit(submitter || undefined);
+      window.setTimeout(() => {
+        form.dataset.confirmed = '0';
+      }, 0);
+    }
+  });
+
+  document.querySelectorAll('[data-copy-text]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const original = button.textContent;
+
+      try {
+        await navigator.clipboard.writeText(button.dataset.copyText || '');
+        button.textContent = 'Copied';
+      } catch (error) {
+        button.textContent = 'Copy failed';
+      }
+
+      window.setTimeout(() => {
+        button.textContent = original;
+      }, 1600);
+    });
+  });
+
+  document.querySelectorAll('[data-account-type]').forEach((select) => {
+    const fields = document.querySelectorAll('[data-shelter-field]');
+    const syncFields = () => {
+      const isShelter = select.value === 'shelter';
+
+      fields.forEach((field) => {
+        field.hidden = !isShelter;
+      });
+    };
+
+    select.addEventListener('change', syncFields);
+    syncFields();
+  });
+
+  document.querySelectorAll('.image-manager select[name*="[crop_focus]"]').forEach((select) => {
+    select.addEventListener('change', () => {
+      const image = select.closest('article')?.querySelector('img');
+
+      if (image) {
+        image.style.objectPosition = select.value;
+      }
+    });
+  });
 
   document.querySelectorAll('[data-open-dialog]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -48,7 +159,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const normalizeText = (value) => String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
 
-  document.querySelectorAll('[data-enhanced-table]').forEach((table) => {
+  document.querySelectorAll('[data-enhanced-table]').forEach((table, tableIndex) => {
     const tbody = table.tBodies[0];
 
     if (!tbody || table.dataset.tableReady === '1') return;
@@ -67,6 +178,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const count = document.createElement('p');
     const empty = document.createElement('p');
     const filters = [];
+    const storageKey = table.dataset.tableKey ? `petAdoption.table.${table.dataset.tableKey}` : `petAdoption.table.${window.location.pathname}.${tableIndex}`;
+    const storedState = (() => {
+      try {
+        return JSON.parse(window.localStorage.getItem(storageKey) || '{}');
+      } catch (error) {
+        return {};
+      }
+    })();
 
     controls.className = 'table-tools';
     searchCaption.textContent = 'Search';
@@ -155,6 +274,18 @@ document.addEventListener('DOMContentLoaded', () => {
       filters.push(filter);
     });
 
+    if (typeof storedState.search === 'string') {
+      search.value = storedState.search;
+    }
+
+    filters.forEach((filter) => {
+      const value = storedState.filters?.[filter.dataset.tableFilterColumn || ''];
+
+      if (typeof value === 'string') {
+        filter.value = value;
+      }
+    });
+
     clear.className = 'btn secondary small';
     clear.type = 'button';
     clear.textContent = 'Clear';
@@ -197,6 +328,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
       count.textContent = `${visible} of ${rows.length} shown`;
       empty.hidden = visible > 0;
+
+      const nextState = {
+        search: search.value,
+        filters: Object.fromEntries(filters.map((filter) => [filter.dataset.tableFilterColumn || '', filter.value])),
+      };
+
+      try {
+        window.localStorage.setItem(storageKey, JSON.stringify(nextState));
+      } catch (error) {
+        return;
+      }
     }
 
     controls.addEventListener('submit', (event) => {
@@ -210,6 +352,11 @@ document.addEventListener('DOMContentLoaded', () => {
       filters.forEach((filter) => {
         filter.value = '';
       });
+      try {
+        window.localStorage.removeItem(storageKey);
+      } catch (error) {
+        return;
+      }
       applyFilters();
     });
     applyFilters();

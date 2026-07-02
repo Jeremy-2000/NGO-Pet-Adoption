@@ -6,8 +6,10 @@ require dirname(__DIR__) . '/app/bootstrap.php';
 try {
     $pdo = db();
     $animalRepository = new AnimalRepository($pdo);
-    $animalId = max(0, (int) ($_GET['id'] ?? $_POST['animal_id'] ?? 0));
-    $animal = $animalRepository->findPublic($animalId);
+    $previewPayload = preview_payload('animal');
+    $isPreview = $previewPayload !== null;
+    $animalId = $isPreview ? 0 : max(0, (int) ($_GET['id'] ?? $_POST['animal_id'] ?? 0));
+    $animal = $isPreview ? $previewPayload['animal'] : $animalRepository->findPublic($animalId);
 
     if (!$animal) {
         http_response_code(404);
@@ -17,7 +19,7 @@ try {
     $rateLimiter = new RateLimiter($pdo);
     $rateConfig = config('rate_limits', []);
 
-    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isPreview) {
         verifyCsrf();
         $action = (string) ($_POST['action'] ?? '');
 
@@ -38,8 +40,16 @@ try {
             $email = trim((string) ($_POST['email'] ?? ''));
             $message = trim((string) ($_POST['message'] ?? ''));
 
-            if ($name === '' || !filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($message) < 20) {
-                flash('error', 'Please enter your name, a valid email address, and a message of at least 20 characters.');
+            if ($name === '' || !filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($message) < 20 || empty($_POST['privacy_consent'])) {
+                flash('error', 'Please enter your details, a message of at least 20 characters, and consent.');
+                redirect('/animal.php?id=' . $animalId . '#inquiry');
+            }
+
+            $duplicate = $pdo->prepare('SELECT id FROM inquiries WHERE animal_id = ? AND email = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 1 DAY) LIMIT 1');
+            $duplicate->execute([$animalId, $email]);
+
+            if ($duplicate->fetch()) {
+                flash('error', 'A recent inquiry for this listing already exists with that email address.');
                 redirect('/animal.php?id=' . $animalId . '#inquiry');
             }
 
@@ -64,6 +74,81 @@ try {
             redirect('/animal.php?id=' . $animalId . '#inquiry');
         }
 
+        if ($action === 'application') {
+            $user = currentUser();
+
+            if ($user === null || ($user['role'] ?? '') !== 'visitor') {
+                flash('error', 'Please create an adopter account or sign in before applying.');
+                redirect('/login.php');
+            }
+
+            if (!in_array((string) $animal['status'], ['available', 'reserved', 'medical_hold'], true)) {
+                flash('error', 'This listing is not currently accepting adoption applications.');
+                redirect('/animal.php?id=' . $animalId);
+            }
+
+            $limit = $rateConfig['application'] ?? ['attempts' => 4, 'decay_seconds' => 3600];
+
+            if (!$rateLimiter->allow('application', client_identity_hash(), (int) $limit['attempts'], (int) $limit['decay_seconds'])) {
+                flash('error', 'Too many applications were submitted from this browser. Please try again later.');
+                redirect('/animal.php?id=' . $animalId . '#apply');
+            }
+
+            if (trim((string) ($_POST['company'] ?? '')) !== '') {
+                flash('error', 'The application could not be submitted.');
+                redirect('/animal.php?id=' . $animalId . '#apply');
+            }
+
+            $name = substr(trim((string) ($_POST['name'] ?? $user['name'])), 0, 150);
+            $email = trim((string) ($_POST['email'] ?? $user['email']));
+            $message = trim((string) ($_POST['message'] ?? ''));
+
+            if ($name === '' || !filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($message) < 30 || empty($_POST['privacy_consent'])) {
+                flash('error', 'Please complete the application, include at least 30 characters, and confirm consent.');
+                redirect('/animal.php?id=' . $animalId . '#apply');
+            }
+
+            $duplicate = $pdo->prepare(
+                "SELECT id FROM adoption_applications
+                WHERE animal_id = ? AND user_id = ? AND status NOT IN ('declined','completed','cancelled')
+                LIMIT 1"
+            );
+            $duplicate->execute([$animalId, (int) $user['id']]);
+
+            if ($duplicate->fetch()) {
+                flash('error', 'You already have an open application for this listing.');
+                redirect('/account.php');
+            }
+
+            $statement = $pdo->prepare(
+                'INSERT INTO adoption_applications
+                    (animal_id, shelter_id, user_id, name, email, phone, home_type, lifestyle, has_children, has_pets, experience, message, privacy_consent, ip_hash, user_agent, source_page)
+                VALUES
+                    (:animal_id, :shelter_id, :user_id, :name, :email, :phone, :home_type, :lifestyle, :has_children, :has_pets, :experience, :message, :privacy_consent, :ip_hash, :user_agent, :source_page)'
+            );
+            $statement->execute([
+                'animal_id' => $animalId,
+                'shelter_id' => (int) $animal['shelter_id'],
+                'user_id' => (int) $user['id'],
+                'name' => $name,
+                'email' => $email,
+                'phone' => substr(trim((string) ($_POST['phone'] ?? '')), 0, 50) ?: null,
+                'home_type' => substr(trim((string) ($_POST['home_type'] ?? '')), 0, 80) ?: null,
+                'lifestyle' => substr(trim((string) ($_POST['lifestyle'] ?? '')), 0, 80) ?: null,
+                'has_children' => !empty($_POST['has_children']) ? 1 : 0,
+                'has_pets' => !empty($_POST['has_pets']) ? 1 : 0,
+                'experience' => trim((string) ($_POST['experience'] ?? '')) ?: null,
+                'message' => $message,
+                'privacy_consent' => 1,
+                'ip_hash' => client_identity_hash(),
+                'user_agent' => substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255),
+                'source_page' => '/animal.php?id=' . $animalId,
+            ]);
+            audit_log($pdo, 'application.created', 'animal', $animalId, ['shelter_id' => (int) $animal['shelter_id']]);
+            flash('success', 'Application submitted. You can track the status from your account.');
+            redirect('/account.php');
+        }
+
         if ($action === 'favorite') {
             $limit = $rateConfig['favorite'];
 
@@ -84,12 +169,17 @@ try {
                 redirect('/animal.php?id=' . $animalId . '#report');
             }
 
+            if (trim((string) ($_POST['report_company'] ?? '')) !== '') {
+                flash('error', 'The report could not be submitted.');
+                redirect('/animal.php?id=' . $animalId . '#report');
+            }
+
             $reporterName = substr(trim((string) ($_POST['reporter_name'] ?? '')), 0, 150);
             $reporterEmail = trim((string) ($_POST['reporter_email'] ?? ''));
             $reason = trim((string) ($_POST['reason'] ?? ''));
 
-            if ($reporterName === '' || !filter_var($reporterEmail, FILTER_VALIDATE_EMAIL) || strlen($reason) < 15) {
-                flash('error', 'Please include your name, a valid email, and a clear report reason.');
+            if ($reporterName === '' || !filter_var($reporterEmail, FILTER_VALIDATE_EMAIL) || strlen($reason) < 15 || empty($_POST['privacy_consent'])) {
+                flash('error', 'Please include your name, a valid email, a clear report reason, and consent.');
                 redirect('/animal.php?id=' . $animalId . '#report');
             }
 
@@ -104,12 +194,13 @@ try {
         }
     }
 
-    if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    if ($_SERVER['REQUEST_METHOD'] === 'GET' && !$isPreview) {
         $animalRepository->incrementViews($animalId);
+        $animalRepository->recordRecentlyViewed($animalId, currentUser()['id'] ?? null, session_id());
         $animal['views_count'] = (int) $animal['views_count'] + 1;
     }
 
-    $images = $animalRepository->imagesForAnimal($animalId);
+    $images = $isPreview ? [] : $animalRepository->imagesForAnimal($animalId);
     $visibility = (new VisibilityService(config('visibility.weights', []), config('visibility.limits', [])))->explain($animal);
 } catch (Throwable $exception) {
     http_response_code(500);
@@ -118,6 +209,7 @@ try {
 
 $success = flash('success');
 $error = flash('error');
+$acceptsApplications = in_array((string) $animal['status'], ['available', 'reserved', 'medical_hold'], true);
 ?>
 <!doctype html>
 <html lang="en">
@@ -138,13 +230,20 @@ $error = flash('error');
         <a href="<?php echo e(url('/shelters.php')); ?>">Shelters</a>
         <a href="<?php echo e(url('/vote.php')); ?>">Vote</a>
       </nav>
-      <div class="actions"><a class="btn secondary" href="<?php echo e(url('/login.php')); ?>">Sign in</a></div>
+      <div class="actions">
+        <?php if (isLoggedIn()) : ?>
+          <a class="btn secondary" href="<?php echo e(url(currentUser()['role'] === 'visitor' ? '/account.php' : (currentUser()['role'] === 'shelter' ? '/shelter/dashboard.php' : '/admin/dashboard.php'))); ?>">Dashboard</a>
+        <?php else : ?>
+          <a class="btn secondary" href="<?php echo e(url('/login.php')); ?>">Sign in</a>
+        <?php endif; ?>
+      </div>
     </div>
   </header>
 
   <main>
     <section class="page-title">
       <div class="wrap">
+        <?php if ($isPreview) : ?><div class="alert alert-warning">Preview mode. This listing is not publicly published from this preview.</div><?php endif; ?>
         <?php if ((float) $visibility['score'] >= 0.6 || (int) $animal['is_featured'] === 1) : ?><span class="badge promoted">Promoted by visibility engine</span><?php endif; ?>
         <h1><?php echo e($animal['name']); ?></h1>
         <p class="lead muted"><?php echo e($animal['species']); ?> - <?php echo e($animal['breed'] ?: 'Mixed breed'); ?> - <?php echo e($animal['age'] ?: 'Age unknown'); ?></p>
@@ -159,7 +258,7 @@ $error = flash('error');
               <div class="media" data-carousel>
                 <div class="slides">
                   <?php foreach ($images as $image) : ?>
-                    <img class="slide" src="<?php echo e(uploaded_url($image['file_path'])); ?>" alt="<?php echo e($animal['name']); ?>" loading="lazy">
+                    <img class="slide" src="<?php echo e(uploaded_url($image['file_path'])); ?>" alt="<?php echo e($animal['name']); ?>" loading="lazy" style="object-position: <?php echo e($image['crop_focus'] ?? 'center'); ?>;">
                   <?php endforeach; ?>
                 </div>
                 <?php if (count($images) > 1) : ?>
@@ -203,7 +302,7 @@ $error = flash('error');
           <div class="panel sticky-panel">
             <div class="card-title">
               <h2><?php echo e($animal['name']); ?></h2>
-              <span class="badge <?php echo e($animal['status'] === 'medical_hold' ? 'hold' : 'available'); ?>"><?php echo e(status_label($animal['status'])); ?></span>
+              <span class="badge <?php echo e(status_badge_class($animal['status'])); ?>"><?php echo e(status_label($animal['status'])); ?></span>
             </div>
             <p class="muted">Listed by <a href="<?php echo e(url('/shelter.php?slug=' . rawurlencode($animal['shelter_slug']))); ?>"><b><?php echo e($animal['shelter_name']); ?></b></a></p>
             <div class="quick">
@@ -213,15 +312,30 @@ $error = flash('error');
               <div><b>Location</b><br><span class="muted"><?php echo e($animal['city'] ?: $animal['country'] ?: 'Not listed'); ?></span></div>
             </div>
             <div class="button-row">
-              <a class="btn green" href="#inquiry">Start inquiry</a>
-              <form method="post">
-                <input type="hidden" name="csrf_token" value="<?php echo e(csrfToken()); ?>">
-                <input type="hidden" name="animal_id" value="<?php echo e($animalId); ?>">
-                <input type="hidden" name="action" value="favorite">
-                <button class="btn secondary" type="submit">Save</button>
-              </form>
+              <?php if (!$isPreview) : ?>
+                <?php if ($acceptsApplications) : ?><a class="btn green" href="#apply">Apply to adopt</a><?php endif; ?>
+                <a class="btn secondary" href="#inquiry">Ask a question</a>
+                <form method="post">
+                  <input type="hidden" name="csrf_token" value="<?php echo e(csrfToken()); ?>">
+                  <input type="hidden" name="animal_id" value="<?php echo e($animalId); ?>">
+                  <input type="hidden" name="action" value="favorite">
+                  <button class="btn secondary" type="submit">Save</button>
+                </form>
+              <?php endif; ?>
             </div>
           </div>
+
+          <?php if (!$isPreview) : ?>
+            <div class="panel">
+              <h3>Share listing</h3>
+              <?php $shareUrl = rtrim((string) config('base_url'), '/') . '/animal.php?id=' . $animalId; ?>
+              <div class="button-row">
+                <button class="btn secondary small" type="button" data-copy-text="<?php echo e($shareUrl); ?>">Copy link</button>
+                <a class="btn secondary small" href="mailto:?subject=<?php echo rawurlencode('Adoption listing: ' . $animal['name']); ?>&body=<?php echo rawurlencode($shareUrl); ?>">Email</a>
+                <a class="btn secondary small" href="https://www.facebook.com/sharer/sharer.php?u=<?php echo rawurlencode($shareUrl); ?>" target="_blank" rel="noopener">Facebook</a>
+              </div>
+            </div>
+          <?php endif; ?>
 
           <div class="panel">
             <h3>Why promoted?</h3>
@@ -231,6 +345,58 @@ $error = flash('error');
               <div class="step"><span class="num">2</span><div><b><?php echo e($visibility['views_count']); ?> views</b><br><span class="muted">Lower views can receive a boost.</span></div></div>
               <div class="step"><span class="num">3</span><div><b><?php echo e($visibility['vote_wins']); ?> vote wins</b><br><span class="muted">Community engagement supports discovery.</span></div></div>
             </div>
+          </div>
+
+          <?php if (!$isPreview) : ?>
+          <div id="apply" class="panel">
+            <h3>Apply to adopt</h3>
+            <?php if (!$acceptsApplications) : ?>
+              <div class="alert alert-warning">This listing is not currently accepting adoption applications.</div>
+            <?php elseif (!isLoggedIn()) : ?>
+              <div class="empty-state compact-empty">
+                <h4>Account required</h4>
+                <p class="muted">Create an adopter account to submit and track applications.</p>
+                <div class="button-row">
+                  <a class="btn green small" href="<?php echo e(url('/register.php')); ?>">Create account</a>
+                  <a class="btn secondary small" href="<?php echo e(url('/login.php')); ?>">Sign in</a>
+                </div>
+              </div>
+            <?php elseif (currentUser()['role'] !== 'visitor') : ?>
+              <div class="alert alert-warning">Only adopter accounts can submit adoption applications.</div>
+            <?php else : ?>
+              <form class="form" method="post">
+                <input type="hidden" name="csrf_token" value="<?php echo e(csrfToken()); ?>">
+                <input type="hidden" name="animal_id" value="<?php echo e($animalId); ?>">
+                <input type="hidden" name="action" value="application">
+                <label class="visually-hidden" for="application-company">Company</label>
+                <input id="application-company" class="honeypot" name="company" tabindex="-1" autocomplete="off">
+                <input class="input" name="name" value="<?php echo e(currentUser()['name']); ?>" placeholder="Your name" required>
+                <input class="input" name="email" type="email" value="<?php echo e(currentUser()['email']); ?>" placeholder="Email address" required>
+                <input class="input" name="phone" placeholder="Phone optional">
+                <div class="grid two-up">
+                  <select class="input" name="home_type">
+                    <option value="">Home type</option>
+                    <?php foreach (['Apartment', 'House', 'House with garden', 'Farm or large outdoor space'] as $value) : ?>
+                      <option value="<?php echo e($value); ?>"><?php echo e($value); ?></option>
+                    <?php endforeach; ?>
+                  </select>
+                  <select class="input" name="lifestyle">
+                    <option value="">Lifestyle</option>
+                    <?php foreach (['Quiet', 'Active', 'Family', 'Senior-friendly'] as $value) : ?>
+                      <option value="<?php echo e($value); ?>"><?php echo e($value); ?></option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
+                <div class="checkbox-row">
+                  <label><input type="checkbox" name="has_children" value="1"> Children at home</label>
+                  <label><input type="checkbox" name="has_pets" value="1"> Other pets at home</label>
+                </div>
+                <textarea class="input" name="experience" rows="3" placeholder="Previous pet experience"></textarea>
+                <textarea class="input" name="message" rows="5" placeholder="Tell the shelter why this adoption could be a good match" required></textarea>
+                <label class="inline-check"><input type="checkbox" name="privacy_consent" value="1" required> I agree that my application details can be shared with this shelter.</label>
+                <button class="btn green" type="submit">Submit application</button>
+              </form>
+            <?php endif; ?>
           </div>
 
           <div id="inquiry" class="panel">
@@ -245,6 +411,7 @@ $error = flash('error');
               <input class="input" name="email" type="email" placeholder="Email address" required>
               <input class="input" name="phone" placeholder="Phone optional">
               <textarea class="input" name="message" rows="5" placeholder="Tell the shelter about your home and interest" required></textarea>
+              <label class="inline-check"><input type="checkbox" name="privacy_consent" value="1" required> I agree that my message can be shared with this shelter.</label>
               <button class="btn green" type="submit">Submit inquiry</button>
             </form>
           </div>
@@ -255,12 +422,16 @@ $error = flash('error');
               <input type="hidden" name="csrf_token" value="<?php echo e(csrfToken()); ?>">
               <input type="hidden" name="animal_id" value="<?php echo e($animalId); ?>">
               <input type="hidden" name="action" value="report">
+              <label class="visually-hidden" for="report-company">Company</label>
+              <input id="report-company" class="honeypot" name="report_company" tabindex="-1" autocomplete="off">
               <input class="input" name="reporter_name" placeholder="Your name" required>
               <input class="input" name="reporter_email" type="email" placeholder="Email address" required>
               <textarea class="input" name="reason" rows="4" placeholder="What should administrators review?" required></textarea>
+              <label class="inline-check"><input type="checkbox" name="privacy_consent" value="1" required> I agree that this report can be reviewed by administrators.</label>
               <button class="btn secondary" type="submit">Submit report</button>
             </form>
           </div>
+          <?php endif; ?>
         </aside>
       </div>
     </section>

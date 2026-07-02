@@ -19,13 +19,42 @@ try {
 
     $canPublish = $shelter['status'] === 'approved';
     $editAnimal = null;
+    $editImages = [];
+    $speciesOptions = taxonomy_values($pdo, 'species', ['Dog', 'Cat', 'Rabbit', 'Bird']);
+    $breedOptions = taxonomy_values($pdo, 'breed', []);
+    $sizeOptions = taxonomy_values($pdo, 'size', ['Small', 'Medium', 'Large', 'Extra large']);
+    $shelterAnimalStatuses = ['available', 'reserved', 'medical_hold', 'adopted', 'archived'];
 
     if (!empty($_GET['edit'])) {
         $editAnimal = $animalRepository->findForShelter((int) $_GET['edit'], (int) $shelter['id']);
+        $editImages = $editAnimal ? $animalRepository->imagesForAnimal((int) $editAnimal['id']) : [];
     }
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         verifyCsrf();
+
+        if (isset($_POST['bulk_action'])) {
+            $bulkStatus = (string) ($_POST['bulk_status'] ?? '');
+            $ids = array_filter(array_map('intval', $_POST['animal_ids'] ?? []));
+
+            if ($ids !== [] && in_array($bulkStatus, $shelterAnimalStatuses, true)) {
+                $placeholders = implode(',', array_fill(0, count($ids), '?'));
+                $statement = $pdo->prepare("UPDATE animals SET status = ? WHERE shelter_id = ? AND id IN ({$placeholders})");
+                $statement->execute(array_merge([$bulkStatus, (int) $shelter['id']], $ids));
+                audit_log($pdo, 'animal.bulk_status_updated', 'shelter', (int) $shelter['id'], ['status' => $bulkStatus, 'count' => count($ids)]);
+                flash('success', 'Selected listings updated.');
+            } else {
+                flash('error', 'Choose listings and a valid status before applying a bulk update.');
+            }
+
+            redirect('/shelter/listings.php');
+        }
+
+        if (($_POST['form_action'] ?? '') === 'preview') {
+            $preview = $animalRepository->previewFromData((int) $shelter['id'], $shelter, $_POST);
+            $token = preview_store('animal', ['animal' => $preview]);
+            redirect('/animal.php?preview=' . rawurlencode($token));
+        }
 
         if (!$canPublish) {
             flash('error', 'Only approved shelters can create or update listings.');
@@ -47,6 +76,11 @@ try {
                 $uploadService = new UploadService($pdo, config('uploads', []));
                 $uploadService->storeAnimalImages($_FILES['photos'], $animalId);
                 audit_log($pdo, 'animal.images_uploaded', 'animal', $animalId);
+            }
+
+            if (!empty($_POST['image_settings']) && is_array($_POST['image_settings'])) {
+                $animalRepository->updateImageSettings($animalId, $_POST['image_settings']);
+                audit_log($pdo, 'animal.images_reordered', 'animal', $animalId);
             }
 
             flash('success', 'Listing saved.');
@@ -91,6 +125,7 @@ if ($editAnimal && preg_match('/^(\d+)\s+(week|weeks|month|months|year|years)$/i
         <a href="<?php echo e(url('/shelter/profile.php')); ?>">Profile</a>
         <a class="active" href="<?php echo e(url('/shelter/listings.php')); ?>">Listings</a>
         <a href="<?php echo e(url('/shelter/inquiries.php')); ?>">Inquiries</a>
+        <a href="<?php echo e(url('/shelter/applications.php')); ?>">Applications</a>
         <a href="<?php echo e(url('/logout.php')); ?>">Logout</a>
       </nav>
     </aside>
@@ -112,9 +147,27 @@ if ($editAnimal && preg_match('/^(\d+)\s+(week|weeks|month|months|year|years)$/i
           </div>
         </div>
         <div class="table-wrap">
-          <table class="table" data-enhanced-table data-table-empty="No listings match these filters.">
+          <?php if ($animals === []) : ?>
+            <div class="empty-state compact-empty">
+              <h2>No listings yet.</h2>
+              <p class="muted">Use Create listing to start building your public catalogue.</p>
+            </div>
+          <?php else : ?>
+          <form method="post" class="bulk-form">
+            <input type="hidden" name="csrf_token" value="<?php echo e(csrfToken()); ?>">
+            <div class="bulk-actions">
+              <select class="input compact-input" name="bulk_status">
+                <option value="">Bulk status</option>
+                <?php foreach ($shelterAnimalStatuses as $status) : ?>
+                  <option value="<?php echo e($status); ?>"><?php echo e(status_label($status)); ?></option>
+                <?php endforeach; ?>
+              </select>
+              <button class="btn secondary small" type="submit" name="bulk_action" value="status" data-confirm="Update all selected listings?">Apply</button>
+            </div>
+          <table class="table" data-enhanced-table data-table-key="shelter-listings" data-table-empty="No listings match these filters.">
             <thead>
               <tr>
+                <th data-no-filter="true" data-no-sort="true">Select</th>
                 <th>Animal</th>
                 <th>Species</th>
                 <th>Status</th>
@@ -128,9 +181,10 @@ if ($editAnimal && preg_match('/^(\d+)\s+(week|weeks|month|months|year|years)$/i
             <tbody>
               <?php foreach ($animals as $animal) : ?>
                 <tr>
+                  <td><input type="checkbox" name="animal_ids[]" value="<?php echo e($animal['id']); ?>" aria-label="Select <?php echo e($animal['name']); ?>"></td>
                   <td><strong><?php echo e($animal['name']); ?></strong><br><span class="muted"><?php echo e($animal['breed'] ?: 'Mixed breed'); ?></span></td>
                   <td><?php echo e($animal['species']); ?></td>
-                  <td><?php echo e(status_label($animal['status'])); ?></td>
+                  <td><span class="badge <?php echo e(status_badge_class($animal['status'])); ?>"><?php echo e(status_label($animal['status'])); ?></span></td>
                   <td><?php echo e($animal['age'] ?: 'Not listed'); ?></td>
                   <td><?php echo e($animal['size'] ?: 'Not listed'); ?></td>
                   <td><?php echo e($animal['views_count']); ?></td>
@@ -140,6 +194,8 @@ if ($editAnimal && preg_match('/^(\d+)\s+(week|weeks|month|months|year|years)$/i
               <?php endforeach; ?>
             </tbody>
           </table>
+          </form>
+          <?php endif; ?>
         </div>
       </section>
 
@@ -155,10 +211,22 @@ if ($editAnimal && preg_match('/^(\d+)\s+(week|weeks|month|months|year|years)$/i
           <form method="post" enctype="multipart/form-data" class="form">
             <input type="hidden" name="csrf_token" value="<?php echo e(csrfToken()); ?>">
             <?php if ($editAnimal) : ?><input type="hidden" name="animal_id" value="<?php echo e($editAnimal['id']); ?>"><?php endif; ?>
+            <?php if ($breedOptions !== []) : ?>
+              <datalist id="breed-options">
+                <?php foreach ($breedOptions as $breed) : ?>
+                  <option value="<?php echo e($breed); ?>"></option>
+                <?php endforeach; ?>
+              </datalist>
+            <?php endif; ?>
             <div class="grid two-up">
               <label><span>Name</span><input class="input" type="text" name="name" value="<?php echo e($editAnimal['name'] ?? ''); ?>" required></label>
-              <label><span>Species</span><input class="input" type="text" name="species" value="<?php echo e($editAnimal['species'] ?? ''); ?>" required></label>
-              <label><span>Breed</span><input class="input" type="text" name="breed" value="<?php echo e($editAnimal['breed'] ?? ''); ?>"></label>
+              <label><span>Species</span><select class="input" name="species" required>
+                <option value="">Choose species</option>
+                <?php foreach ($speciesOptions as $species) : ?>
+                  <option value="<?php echo e($species); ?>" <?php echo selected($editAnimal['species'] ?? '', $species); ?>><?php echo e($species); ?></option>
+                <?php endforeach; ?>
+              </select></label>
+              <label><span>Breed</span><input class="input" type="text" name="breed" value="<?php echo e($editAnimal['breed'] ?? ''); ?>" list="breed-options"></label>
               <label><span>Color</span><input class="input" type="text" name="color" value="<?php echo e($editAnimal['color'] ?? ''); ?>"></label>
               <label>
                 <span>Age</span>
@@ -184,13 +252,13 @@ if ($editAnimal && preg_match('/^(\d+)\s+(week|weeks|month|months|year|years)$/i
                 <span>Size</span>
                 <select class="input" name="size">
                   <option value="">Choose size</option>
-                  <?php foreach (['Small', 'Medium', 'Large', 'Extra large'] as $size) : ?>
+                  <?php foreach ($sizeOptions as $size) : ?>
                     <option value="<?php echo e($size); ?>" <?php echo selected($editAnimal['size'] ?? '', $size); ?>><?php echo e($size); ?></option>
                   <?php endforeach; ?>
                 </select>
               </label>
               <label><span>Status</span><select class="input" name="status">
-                <?php foreach (['available', 'reserved', 'adopted', 'medical_hold'] as $status) : ?>
+                <?php foreach ($shelterAnimalStatuses as $status) : ?>
                   <option value="<?php echo e($status); ?>" <?php echo selected($editAnimal['status'] ?? 'available', $status); ?>><?php echo e(status_label($status)); ?></option>
                 <?php endforeach; ?>
               </select></label>
@@ -209,8 +277,27 @@ if ($editAnimal && preg_match('/^(\d+)\s+(week|weeks|month|months|year|years)$/i
               <label><input type="checkbox" name="is_senior" value="1" <?php echo checked($editAnimal['is_senior'] ?? false); ?>> Senior animal</label>
             </div>
             <label><span>Photos</span><input class="input" type="file" name="photos[]" multiple accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"></label>
+            <?php if ($editImages !== []) : ?>
+              <section>
+                <h3>Image order and crop focus</h3>
+                <div class="image-manager">
+                  <?php foreach ($editImages as $image) : ?>
+                    <article>
+                      <img src="<?php echo e(uploaded_url($image['thumbnail_path'] ?: $image['file_path'])); ?>" alt="<?php echo e($image['original_name']); ?>" style="object-position: <?php echo e($image['crop_focus'] ?? 'center'); ?>;">
+                      <label><span>Order</span><input class="input" type="number" min="0" name="image_settings[<?php echo e($image['id']); ?>][sort_order]" value="<?php echo e($image['sort_order']); ?>"></label>
+                      <label><span>Crop focus</span><select class="input" name="image_settings[<?php echo e($image['id']); ?>][crop_focus]">
+                        <?php foreach (['center', 'top', 'bottom', 'left', 'right'] as $focus) : ?>
+                          <option value="<?php echo e($focus); ?>" <?php echo selected($image['crop_focus'] ?? 'center', $focus); ?>><?php echo e(status_label($focus)); ?></option>
+                        <?php endforeach; ?>
+                      </select></label>
+                    </article>
+                  <?php endforeach; ?>
+                </div>
+              </section>
+            <?php endif; ?>
             <div class="dialog-actions">
-              <button class="btn green" type="submit">Save listing</button>
+              <button class="btn secondary" type="submit" name="form_action" value="preview">Preview</button>
+              <button class="btn green" type="submit" name="form_action" value="save">Save listing</button>
               <a class="btn secondary" href="<?php echo e(url('/shelter/listings.php')); ?>">Cancel</a>
             </div>
           </form>

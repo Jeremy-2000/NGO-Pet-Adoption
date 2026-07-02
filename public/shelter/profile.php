@@ -64,6 +64,7 @@ $success = flash('success');
         <a class="active" href="<?php echo e(url('/shelter/profile.php')); ?>">Profile</a>
         <a href="<?php echo e(url('/shelter/listings.php')); ?>">Listings</a>
         <a href="<?php echo e(url('/shelter/inquiries.php')); ?>">Inquiries</a>
+        <a href="<?php echo e(url('/shelter/applications.php')); ?>">Applications</a>
         <a href="<?php echo e(url('/logout.php')); ?>">Logout</a>
       </nav>
     </aside>

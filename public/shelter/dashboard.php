@@ -24,8 +24,35 @@ try {
     $inquiryCount->execute([(int) $shelter['id']]);
     $newInquiries = $pdo->prepare("SELECT COUNT(*) FROM inquiries WHERE shelter_id = ? AND status = 'new'");
     $newInquiries->execute([(int) $shelter['id']]);
+    $applicationCount = $pdo->prepare('SELECT COUNT(*) FROM adoption_applications WHERE shelter_id = ?');
+    $applicationCount->execute([(int) $shelter['id']]);
+    $newApplications = $pdo->prepare("SELECT COUNT(*) FROM adoption_applications WHERE shelter_id = ? AND status IN ('new','reviewing')");
+    $newApplications->execute([(int) $shelter['id']]);
+    $listingsNeedingPhotos = $pdo->prepare(
+        'SELECT COUNT(*) FROM animals a
+        WHERE a.shelter_id = ? AND NOT EXISTS (SELECT 1 FROM animal_images ai WHERE ai.animal_id = a.id)'
+    );
+    $listingsNeedingPhotos->execute([(int) $shelter['id']]);
     $stats['Inquiries'] = (int) $inquiryCount->fetchColumn();
     $stats['New inquiries'] = (int) $newInquiries->fetchColumn();
+    $stats['Applications'] = (int) $applicationCount->fetchColumn();
+    $stats['Needs review'] = (int) $newApplications->fetchColumn();
+    $tasks = [
+        ['label' => 'New inquiries', 'count' => (int) $stats['New inquiries'], 'href' => '/shelter/inquiries.php'],
+        ['label' => 'Applications needing review', 'count' => (int) $stats['Needs review'], 'href' => '/shelter/applications.php'],
+        ['label' => 'Listings missing photos', 'count' => (int) $listingsNeedingPhotos->fetchColumn(), 'href' => '/shelter/listings.php'],
+        ['label' => 'Profile missing location', 'count' => ($shelter['city'] || $shelter['country']) ? 0 : 1, 'href' => '/shelter/profile.php'],
+    ];
+    $appointments = $pdo->prepare(
+        "SELECT ap.*, a.name AS animal_name
+        FROM appointments ap
+        LEFT JOIN animals a ON a.id = ap.animal_id
+        WHERE ap.shelter_id = ? AND ap.status = 'scheduled' AND ap.appointment_at >= NOW()
+        ORDER BY ap.appointment_at ASC
+        LIMIT 5"
+    );
+    $appointments->execute([(int) $shelter['id']]);
+    $appointments = $appointments->fetchAll();
 } catch (Throwable) {
     http_response_code(500);
     exit('Shelter dashboard could not be loaded.');
@@ -48,6 +75,7 @@ try {
         <a href="<?php echo e(url('/shelter/profile.php')); ?>">Profile</a>
         <a href="<?php echo e(url('/shelter/listings.php')); ?>">Listings</a>
         <a href="<?php echo e(url('/shelter/inquiries.php')); ?>">Inquiries</a>
+        <a href="<?php echo e(url('/shelter/applications.php')); ?>">Applications</a>
         <a href="<?php echo e(url('/logout.php')); ?>">Logout</a>
       </nav>
     </aside>
@@ -56,7 +84,7 @@ try {
         <div>
           <p class="eyebrow">Shelter portal</p>
           <h1><?php echo e($shelter['name']); ?></h1>
-          <p class="muted">Status: <?php echo e(status_label($shelter['status'])); ?></p>
+          <p class="muted">Status: <span class="badge <?php echo e(status_badge_class($shelter['status'])); ?>"><?php echo e(status_label($shelter['status'])); ?></span></p>
         </div>
         <a class="btn secondary" href="<?php echo e(url('/shelter/profile.php')); ?>">Edit profile</a>
       </header>
@@ -76,12 +104,14 @@ try {
 
       <section class="grid two-up">
         <article class="card">
-          <h2>Recent listings</h2>
-          <ul class="list">
-            <?php foreach (array_slice($animals, 0, 6) as $animal) : ?>
+          <h2>Task queue</h2>
+          <ul class="list task-list">
+            <?php foreach ($tasks as $task) : ?>
               <li>
-                <strong><?php echo e($animal['name']); ?></strong>
-                <span class="muted"><?php echo e(status_label($animal['status'])); ?> - <?php echo e($animal['views_count']); ?> views</span>
+                <a href="<?php echo e(url($task['href'])); ?>">
+                  <strong><?php echo e($task['label']); ?></strong>
+                  <span class="badge <?php echo (int) $task['count'] > 0 ? 'pending' : 'approved'; ?>"><?php echo e((string) $task['count']); ?></span>
+                </a>
               </li>
             <?php endforeach; ?>
           </ul>
@@ -93,6 +123,39 @@ try {
             <li>Contact email: <strong><?php echo e($shelter['contact_email'] ?: 'Missing'); ?></strong></li>
             <li>Profile location: <strong><?php echo e($shelter['city'] ?: $shelter['country'] ?: 'Missing'); ?></strong></li>
           </ul>
+        </article>
+      </section>
+
+      <section class="grid two-up">
+        <article class="card">
+          <h2>Recent listings</h2>
+          <?php if ($animals === []) : ?>
+            <div class="empty-state compact-empty"><h3>No listings yet.</h3><p class="muted">Create the first listing once your shelter is approved.</p></div>
+          <?php else : ?>
+            <ul class="list">
+              <?php foreach (array_slice($animals, 0, 6) as $animal) : ?>
+                <li>
+                  <strong><?php echo e($animal['name']); ?></strong>
+                  <span><span class="badge <?php echo e(status_badge_class($animal['status'])); ?>"><?php echo e(status_label($animal['status'])); ?></span> <span class="muted"><?php echo e($animal['views_count']); ?> views</span></span>
+                </li>
+              <?php endforeach; ?>
+            </ul>
+          <?php endif; ?>
+        </article>
+        <article class="card">
+          <h2>Upcoming appointments</h2>
+          <?php if ($appointments === []) : ?>
+            <div class="empty-state compact-empty"><h3>No scheduled appointments.</h3><p class="muted">Meet-and-greet times saved on applications will appear here.</p></div>
+          <?php else : ?>
+            <ul class="list">
+              <?php foreach ($appointments as $appointment) : ?>
+                <li>
+                  <strong><?php echo e($appointment['title']); ?></strong>
+                  <span class="muted"><?php echo e($appointment['animal_name'] ?: 'General'); ?> - <?php echo e($appointment['appointment_at']); ?></span>
+                </li>
+              <?php endforeach; ?>
+            </ul>
+          <?php endif; ?>
         </article>
       </section>
     </main>

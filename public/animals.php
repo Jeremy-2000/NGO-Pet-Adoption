@@ -6,6 +6,25 @@ require dirname(__DIR__) . '/app/bootstrap.php';
 try {
     $pdo = db();
     $repository = new AnimalRepository($pdo);
+    $rateLimiter = new RateLimiter($pdo);
+
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        verifyCsrf();
+
+        if (($_POST['action'] ?? '') === 'favorite') {
+            $limit = config('rate_limits.favorite', ['attempts' => 30, 'decay_seconds' => 3600]);
+            $animalId = (int) ($_POST['animal_id'] ?? 0);
+
+            if ($animalId > 0 && $rateLimiter->allow('favorite', client_identity_hash(), (int) $limit['attempts'], (int) $limit['decay_seconds'])) {
+                $repository->createFavorite($animalId, currentUser()['id'] ?? null, session_id());
+                audit_log($pdo, 'favorite.created', 'animal', $animalId);
+                flash('success', 'Listing saved to favourites.');
+            }
+        }
+
+        redirect('/animals.php' . ($_SERVER['QUERY_STRING'] ? '?' . $_SERVER['QUERY_STRING'] : ''));
+    }
+
     $page = max(1, (int) ($_GET['page'] ?? 1));
     $perPage = (int) config('pagination.per_page', 12);
     $filters = [
@@ -23,6 +42,7 @@ try {
     $result = $repository->search($filters, $page, $perPage);
     $visibilityService = new VisibilityService(config('visibility.weights', []), config('visibility.limits', []));
     $animals = $result['items'];
+    $favoriteIds = $repository->favoriteIds(currentUser()['id'] ?? null, session_id());
 
     foreach ($animals as $index => $animal) {
         $animals[$index]['visibility_score'] = $visibilityService->score($animal);
@@ -56,7 +76,13 @@ unset($queryWithoutPage['page']);
         <a href="<?php echo e(url('/shelters.php')); ?>">Shelters</a>
         <a href="<?php echo e(url('/vote.php')); ?>">Vote</a>
       </nav>
-      <div class="actions"><a class="btn secondary" href="<?php echo e(url('/login.php')); ?>">Sign in</a></div>
+      <div class="actions">
+        <?php if (isLoggedIn()) : ?>
+          <a class="btn secondary" href="<?php echo e(url(currentUser()['role'] === 'visitor' ? '/account.php' : (currentUser()['role'] === 'shelter' ? '/shelter/dashboard.php' : '/admin/dashboard.php'))); ?>">Dashboard</a>
+        <?php else : ?>
+          <a class="btn secondary" href="<?php echo e(url('/login.php')); ?>">Sign in</a>
+        <?php endif; ?>
+      </div>
     </div>
   </header>
 
@@ -101,10 +127,12 @@ unset($queryWithoutPage['page']);
         <div class="section-head">
           <p class="muted"><?php echo e(number_format($result['total'])); ?> animals found</p>
         </div>
+        <?php if ($success = flash('success')) : ?><div class="alert alert-success"><?php echo e($success); ?></div><?php endif; ?>
         <?php if ($animals === []) : ?>
           <div class="empty-state">
             <h2>No animals match those filters yet.</h2>
             <p class="muted">Try a wider keyword, species, or location search.</p>
+            <a class="btn secondary small" href="<?php echo e(url('/animals.php')); ?>">Clear filters</a>
           </div>
         <?php endif; ?>
         <div class="grid cards">
@@ -113,7 +141,7 @@ unset($queryWithoutPage['page']);
               <a class="media" href="<?php echo e(url('/animal.php?id=' . $animal['id'])); ?>">
                 <?php if ((float) $animal['visibility_score'] >= 0.6 || (int) $animal['is_featured'] === 1) : ?><span class="badge promoted">Promoted</span><?php endif; ?>
                 <?php if ($animal['thumbnail_path'] ?? $animal['image_path'] ?? '') : ?>
-                  <img src="<?php echo e(uploaded_url($animal['thumbnail_path'] ?: $animal['image_path'])); ?>" alt="<?php echo e($animal['name']); ?>" loading="lazy">
+                  <img src="<?php echo e(uploaded_url($animal['thumbnail_path'] ?: $animal['image_path'])); ?>" alt="<?php echo e($animal['name']); ?>" loading="lazy" style="object-position: <?php echo e($animal['image_crop_focus'] ?? 'center'); ?>;">
                 <?php else : ?>
                   <div class="image-placeholder"><?php echo e($animal['species']); ?></div>
                 <?php endif; ?>
@@ -121,7 +149,7 @@ unset($queryWithoutPage['page']);
               <div class="card-body">
                 <div class="card-title">
                   <h3><?php echo e($animal['name']); ?></h3>
-                  <span class="badge <?php echo e($animal['status'] === 'medical_hold' ? 'hold' : 'available'); ?>"><?php echo e(status_label($animal['status'])); ?></span>
+                  <span class="badge <?php echo e(status_badge_class($animal['status'])); ?>"><?php echo e(status_label($animal['status'])); ?></span>
                 </div>
                 <p class="muted"><?php echo e($animal['species']); ?> - <?php echo e($animal['breed'] ?: 'Mixed breed'); ?> - <?php echo e($animal['shelter_name']); ?></p>
                 <div class="meta">
@@ -129,7 +157,15 @@ unset($queryWithoutPage['page']);
                   <?php if ($animal['size']) : ?><span class="pill"><?php echo e($animal['size']); ?></span><?php endif; ?>
                   <?php if ((int) $animal['good_with_children'] === 1) : ?><span class="pill">Child friendly</span><?php endif; ?>
                 </div>
-                <small class="muted">Visibility score <?php echo e($animal['visibility_score']); ?></small>
+                <div class="card-actions">
+                  <small class="muted">Visibility score <?php echo e($animal['visibility_score']); ?></small>
+                  <form method="post">
+                    <input type="hidden" name="csrf_token" value="<?php echo e(csrfToken()); ?>">
+                    <input type="hidden" name="action" value="favorite">
+                    <input type="hidden" name="animal_id" value="<?php echo e($animal['id']); ?>">
+                    <button class="btn secondary small" type="submit"><?php echo in_array((int) $animal['id'], $favoriteIds, true) ? 'Saved' : 'Save'; ?></button>
+                  </form>
+                </div>
               </div>
             </article>
           <?php endforeach; ?>

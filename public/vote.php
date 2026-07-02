@@ -62,7 +62,13 @@ $error = flash('error');
         <a href="<?php echo e(url('/shelters.php')); ?>">Shelters</a>
         <a class="active" href="<?php echo e(url('/vote.php')); ?>">Vote</a>
       </nav>
-      <div class="actions"><a class="btn secondary" href="<?php echo e(url('/login.php')); ?>">Sign in</a></div>
+      <div class="actions">
+        <?php if (isLoggedIn()) : ?>
+          <a class="btn secondary" href="<?php echo e(url(currentUser()['role'] === 'visitor' ? '/account.php' : (currentUser()['role'] === 'shelter' ? '/shelter/dashboard.php' : '/admin/dashboard.php'))); ?>">Dashboard</a>
+        <?php else : ?>
+          <a class="btn secondary" href="<?php echo e(url('/login.php')); ?>">Sign in</a>
+        <?php endif; ?>
+      </div>
     </div>
   </header>
 
@@ -93,7 +99,7 @@ $error = flash('error');
               <article class="animal-card vote-card">
                 <div class="media">
                   <?php if ($animal['thumbnail_path'] ?? $animal['image_path'] ?? '') : ?>
-                    <img src="<?php echo e(uploaded_url($animal['thumbnail_path'] ?: $animal['image_path'])); ?>" alt="<?php echo e($animal['name']); ?>">
+                    <img src="<?php echo e(uploaded_url($animal['thumbnail_path'] ?: $animal['image_path'])); ?>" alt="<?php echo e($animal['name']); ?>" style="object-position: <?php echo e($animal['image_crop_focus'] ?? 'center'); ?>;">
                   <?php else : ?>
                     <div class="image-placeholder"><?php echo e($animal['species']); ?></div>
                   <?php endif; ?>
@@ -101,7 +107,7 @@ $error = flash('error');
                 <div class="card-body">
                   <div class="card-title">
                     <h2><?php echo e($animal['name']); ?></h2>
-                    <span class="badge available"><?php echo e(status_label($animal['status'])); ?></span>
+                    <span class="badge <?php echo e(status_badge_class($animal['status'])); ?>"><?php echo e(status_label($animal['status'])); ?></span>
                   </div>
                   <p class="muted"><?php echo e($animal['species']); ?> - <?php echo e($animal['breed'] ?: 'Mixed breed'); ?> - <?php echo e($animal['shelter_name']); ?></p>
                   <div class="meta">

@@ -40,7 +40,13 @@ try {
         <a class="active" href="<?php echo e(url('/shelters.php')); ?>">Shelters</a>
         <a href="<?php echo e(url('/vote.php')); ?>">Vote</a>
       </nav>
-      <div class="actions"><a class="btn secondary" href="<?php echo e(url('/login.php')); ?>">Sign in</a></div>
+      <div class="actions">
+        <?php if (isLoggedIn()) : ?>
+          <a class="btn secondary" href="<?php echo e(url(currentUser()['role'] === 'visitor' ? '/account.php' : (currentUser()['role'] === 'shelter' ? '/shelter/dashboard.php' : '/admin/dashboard.php'))); ?>">Dashboard</a>
+        <?php else : ?>
+          <a class="btn secondary" href="<?php echo e(url('/login.php')); ?>">Sign in</a>
+        <?php endif; ?>
+      </div>
     </div>
   </header>
 
@@ -79,11 +85,17 @@ try {
           </div>
         </div>
         <div class="grid cards">
+          <?php if ($animals === []) : ?>
+            <div class="empty-state">
+              <h2>No active listings yet.</h2>
+              <p class="muted">This shelter has no public listings matching the active adoption statuses.</p>
+            </div>
+          <?php endif; ?>
           <?php foreach ($animals as $animal) : ?>
             <article class="animal-card" data-animate>
               <a class="media" href="<?php echo e(url('/animal.php?id=' . $animal['id'])); ?>">
                 <?php if ($animal['thumbnail_path'] ?? $animal['image_path'] ?? '') : ?>
-                  <img src="<?php echo e(uploaded_url($animal['thumbnail_path'] ?: $animal['image_path'])); ?>" alt="<?php echo e($animal['name']); ?>" loading="lazy">
+                  <img src="<?php echo e(uploaded_url($animal['thumbnail_path'] ?: $animal['image_path'])); ?>" alt="<?php echo e($animal['name']); ?>" loading="lazy" style="object-position: <?php echo e($animal['image_crop_focus'] ?? 'center'); ?>;">
                 <?php else : ?>
                   <div class="image-placeholder"><?php echo e($animal['species']); ?></div>
                 <?php endif; ?>
@@ -91,7 +103,7 @@ try {
               <div class="card-body">
                 <div class="card-title">
                   <h3><?php echo e($animal['name']); ?></h3>
-                  <span class="badge <?php echo e($animal['status'] === 'medical_hold' ? 'hold' : 'available'); ?>"><?php echo e(status_label($animal['status'])); ?></span>
+                  <span class="badge <?php echo e(status_badge_class($animal['status'])); ?>"><?php echo e(status_label($animal['status'])); ?></span>
                 </div>
                 <p class="muted"><?php echo e($animal['species']); ?> - <?php echo e($animal['breed'] ?: 'Mixed breed'); ?></p>
               </div>

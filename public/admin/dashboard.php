@@ -12,6 +12,7 @@ try {
         'Animals' => (int) $pdo->query('SELECT COUNT(*) FROM animals')->fetchColumn(),
         'Open reports' => (int) $pdo->query("SELECT COUNT(*) FROM reports WHERE status = 'open'")->fetchColumn(),
         'Inquiries' => (int) $pdo->query('SELECT COUNT(*) FROM inquiries')->fetchColumn(),
+        'Applications' => (int) $pdo->query('SELECT COUNT(*) FROM adoption_applications')->fetchColumn(),
         'Votes' => (int) $pdo->query('SELECT COUNT(*) FROM votes')->fetchColumn(),
     ];
     $pendingShelters = $pdo->query(
@@ -44,9 +45,12 @@ try {
       <a class="brand inverse" href="<?php echo e(url('/admin/dashboard.php')); ?>"><span class="brand-mark">PA</span>Pet Adoption</a>
       <nav>
         <a class="active" href="<?php echo e(url('/admin/dashboard.php')); ?>">Dashboard</a>
+        <a href="<?php echo e(url('/admin/search.php')); ?>">Search</a>
         <a href="<?php echo e(url('/admin/shelters.php')); ?>">Shelters</a>
         <a href="<?php echo e(url('/admin/animals.php')); ?>">Animals</a>
         <a href="<?php echo e(url('/admin/reports.php')); ?>">Reports</a>
+        <a href="<?php echo e(url('/admin/activity.php')); ?>">Activity</a>
+        <a href="<?php echo e(url('/admin/taxonomy.php')); ?>">Taxonomy</a>
         <a href="<?php echo e(url('/logout.php')); ?>">Logout</a>
       </nav>
     </aside>
@@ -68,6 +72,18 @@ try {
         <?php endforeach; ?>
       </section>
 
+      <section class="card">
+        <form class="searchbox admin-search" method="get" action="<?php echo e(url('/admin/search.php')); ?>">
+          <label class="field"><span>Global search</span><input name="q" placeholder="Name, email, listing, application"></label>
+          <button class="btn green" type="submit">Search</button>
+        </form>
+        <div class="button-row export-row">
+          <?php foreach (['shelters', 'animals', 'inquiries', 'applications', 'reports'] as $type) : ?>
+            <a class="btn secondary small" href="<?php echo e(url('/admin/export.php?type=' . $type)); ?>">Export <?php echo e($type); ?></a>
+          <?php endforeach; ?>
+        </div>
+      </section>
+
       <section class="grid two-up">
         <article class="card">
           <h2>Shelter approval queue</h2>
@@ -75,7 +91,7 @@ try {
             <?php foreach ($pendingShelters as $shelter) : ?>
               <li>
                 <strong><?php echo e($shelter['name']); ?></strong>
-                <span class="muted"><?php echo e($shelter['email']); ?> - <?php echo e(status_label($shelter['status'])); ?></span>
+                <span class="muted"><?php echo e($shelter['email']); ?> - <span class="badge <?php echo e(status_badge_class($shelter['status'])); ?>"><?php echo e(status_label($shelter['status'])); ?></span></span>
               </li>
             <?php endforeach; ?>
           </ul>
@@ -95,7 +111,7 @@ try {
       <section class="card">
         <h2>Recent activity</h2>
         <div class="table-wrap">
-          <table class="table" data-enhanced-table data-table-empty="No activity matches these filters.">
+          <table class="table" data-enhanced-table data-table-key="admin-dashboard-activity" data-table-empty="No activity matches these filters.">
             <thead><tr><th>Action</th><th>Target</th><th>When</th></tr></thead>
             <tbody>
               <?php foreach ($recentActivity as $activity) : ?>
