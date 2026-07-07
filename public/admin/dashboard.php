@@ -7,6 +7,7 @@ requireRole('admin');
 try {
     $pdo = db();
     $stats = [
+        'Users' => (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn(),
         'Shelters' => (int) $pdo->query('SELECT COUNT(*) FROM shelters')->fetchColumn(),
         'Pending review' => (int) $pdo->query("SELECT COUNT(*) FROM shelters WHERE status IN ('applied','pending_review')")->fetchColumn(),
         'Animals' => (int) $pdo->query('SELECT COUNT(*) FROM animals')->fetchColumn(),
@@ -46,6 +47,7 @@ try {
       <nav>
         <a class="active" href="<?php echo e(url('/admin/dashboard.php')); ?>">Dashboard</a>
         <a href="<?php echo e(url('/admin/search.php')); ?>">Search</a>
+        <a href="<?php echo e(url('/admin/users.php')); ?>">Users</a>
         <a href="<?php echo e(url('/admin/shelters.php')); ?>">Shelters</a>
         <a href="<?php echo e(url('/admin/animals.php')); ?>">Animals</a>
         <a href="<?php echo e(url('/admin/reports.php')); ?>">Reports</a>
@@ -78,7 +80,7 @@ try {
           <button class="btn green" type="submit">Search</button>
         </form>
         <div class="button-row export-row">
-          <?php foreach (['shelters', 'animals', 'inquiries', 'applications', 'reports'] as $type) : ?>
+          <?php foreach (['users', 'shelters', 'animals', 'inquiries', 'applications', 'reports'] as $type) : ?>
             <a class="btn secondary small" href="<?php echo e(url('/admin/export.php?type=' . $type)); ?>">Export <?php echo e($type); ?></a>
           <?php endforeach; ?>
         </div>

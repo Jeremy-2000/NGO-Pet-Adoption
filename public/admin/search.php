@@ -13,6 +13,7 @@ try {
     if ($q !== '') {
         $needle = '%' . $q . '%';
         $queries = [
+            'Users' => ["SELECT id, name AS title, status, created_at, 'User account' AS kind FROM users WHERE name LIKE ? OR email LIKE ? OR role LIKE ? ORDER BY created_at DESC LIMIT 20", [$needle, $needle, $needle]],
             'Shelters' => ["SELECT id, name AS title, status, created_at, 'Shelter application' AS kind FROM shelters WHERE name LIKE ? OR contact_email LIKE ? OR city LIKE ? ORDER BY created_at DESC LIMIT 20", [$needle, $needle, $needle]],
             'Animals' => ["SELECT id, name AS title, status, created_at, 'Animal listing' AS kind FROM animals WHERE name LIKE ? OR species LIKE ? OR breed LIKE ? ORDER BY created_at DESC LIMIT 20", [$needle, $needle, $needle]],
             'Inquiries' => ["SELECT id, name AS title, status, created_at, 'Inquiry' AS kind FROM inquiries WHERE name LIKE ? OR email LIKE ? OR message LIKE ? ORDER BY created_at DESC LIMIT 20", [$needle, $needle, $needle]],
@@ -47,6 +48,7 @@ try {
       <nav>
         <a href="<?php echo e(url('/admin/dashboard.php')); ?>">Dashboard</a>
         <a class="active" href="<?php echo e(url('/admin/search.php')); ?>">Search</a>
+        <a href="<?php echo e(url('/admin/users.php')); ?>">Users</a>
         <a href="<?php echo e(url('/admin/shelters.php')); ?>">Shelters</a>
         <a href="<?php echo e(url('/admin/animals.php')); ?>">Animals</a>
         <a href="<?php echo e(url('/admin/reports.php')); ?>">Reports</a>
@@ -65,7 +67,7 @@ try {
       </section>
 
       <?php if ($q === '') : ?>
-        <section class="empty-state"><h2>Search across the platform.</h2><p class="muted">Results are grouped by shelter, listing, inquiry, application, and report.</p></section>
+        <section class="empty-state"><h2>Search across the platform.</h2><p class="muted">Results are grouped by user, shelter, listing, inquiry, application, and report.</p></section>
       <?php else : ?>
         <?php foreach ($results as $group => $items) : ?>
           <section class="card">

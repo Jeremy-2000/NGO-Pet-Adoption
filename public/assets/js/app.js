@@ -171,6 +171,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   const normalizeText = (value) => String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const emptyFilterValue = '__empty__';
 
   document.querySelectorAll('[data-enhanced-table]').forEach((table, tableIndex) => {
     const tbody = table.tBodies[0];
@@ -178,7 +179,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!tbody || table.dataset.tableReady === '1') return;
 
     table.dataset.tableReady = '1';
-    const rows = Array.from(tbody.rows);
+    const originalRows = Array.from(tbody.rows);
     const headers = Array.from(table.tHead?.rows[0]?.cells || []);
     const labels = headers.map((header) => header.textContent.replace(/\s+/g, ' ').trim());
     const wrap = table.closest('.table-wrap') || table.parentElement;
@@ -190,7 +191,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const clear = document.createElement('button');
     const count = document.createElement('p');
     const empty = document.createElement('p');
-    const filters = [];
+    const menus = [];
     const storageKey = table.dataset.tableKey ? `petAdoption.table.${table.dataset.tableKey}` : `petAdoption.table.${window.location.pathname}.${tableIndex}`;
     const storedState = (() => {
       try {
@@ -199,105 +200,25 @@ document.addEventListener('DOMContentLoaded', () => {
         return {};
       }
     })();
+    let filterState = {};
+    let sortState = {
+      column: Number.isInteger(storedState.sort?.column) ? storedState.sort.column : null,
+      direction: storedState.sort?.direction === 'desc' ? 'desc' : storedState.sort?.direction === 'asc' ? 'asc' : 'none',
+    };
 
-    controls.className = 'table-tools';
+    Object.entries(storedState.filters || {}).forEach(([column, values]) => {
+      if (Array.isArray(values)) {
+        filterState[column] = values;
+      }
+    });
+
+    controls.className = 'table-tools table-tools-sharepoint';
     searchCaption.textContent = 'Search';
     search.type = 'search';
     search.placeholder = 'Search this table';
     search.dataset.tableSearch = '1';
+    search.value = typeof storedState.search === 'string' ? storedState.search : '';
     searchLabel.append(searchCaption, search);
-    controls.appendChild(searchLabel);
-
-    rows.forEach((row) => {
-      Array.from(row.cells).forEach((cell, index) => {
-        if (!cell.hasAttribute('data-label')) {
-          cell.setAttribute('data-label', labels[index] || '');
-        }
-      });
-    });
-
-    headers.forEach((header, index) => {
-      const label = labels[index] || 'Column';
-      const skipFilter = header.dataset.noFilter === 'true';
-      const skipSort = header.dataset.noSort === 'true';
-
-      if (!skipSort) {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'table-sort-button';
-        button.textContent = label;
-        button.dataset.sortDirection = 'none';
-        header.textContent = '';
-        header.appendChild(button);
-
-        button.addEventListener('click', () => {
-          const nextDirection = button.dataset.sortDirection === 'asc' ? 'desc' : 'asc';
-
-          headers.forEach((otherHeader) => {
-            const otherButton = otherHeader.querySelector('.table-sort-button');
-
-            if (otherButton && otherButton !== button) {
-              otherButton.dataset.sortDirection = 'none';
-            }
-          });
-
-          button.dataset.sortDirection = nextDirection;
-          const sorted = Array.from(tbody.rows).sort((a, b) => {
-            const aText = (a.cells[index]?.textContent || '').replace(/\s+/g, ' ').trim();
-            const bText = (b.cells[index]?.textContent || '').replace(/\s+/g, ' ').trim();
-            const aNumber = Number(aText.replace(/[^\d.-]/g, ''));
-            const bNumber = Number(bText.replace(/[^\d.-]/g, ''));
-            const bothNumeric = aText !== '' && bText !== '' && Number.isFinite(aNumber) && Number.isFinite(bNumber);
-            const result = bothNumeric ? aNumber - bNumber : aText.localeCompare(bText, undefined, { numeric: true, sensitivity: 'base' });
-
-            return nextDirection === 'asc' ? result : -result;
-          });
-
-          sorted.forEach((row) => tbody.appendChild(row));
-          applyFilters();
-        });
-      }
-
-      if (skipFilter) return;
-
-      const values = Array.from(new Set(rows.map((row) => row.cells[index]?.textContent.replace(/\s+/g, ' ').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
-
-      if (values.length <= 1 || values.length > 40) return;
-
-      const filterLabel = document.createElement('label');
-      const filterCaption = document.createElement('span');
-      const filter = document.createElement('select');
-      const emptyOption = document.createElement('option');
-
-      filterCaption.textContent = label;
-      emptyOption.value = '';
-      emptyOption.textContent = `All ${label.toLowerCase()}`;
-      filter.appendChild(emptyOption);
-
-      values.forEach((value) => {
-        const option = document.createElement('option');
-        option.value = normalizeText(value);
-        option.textContent = value;
-        filter.appendChild(option);
-      });
-
-      filter.dataset.tableFilterColumn = String(index);
-      filterLabel.append(filterCaption, filter);
-      controls.appendChild(filterLabel);
-      filters.push(filter);
-    });
-
-    if (typeof storedState.search === 'string') {
-      search.value = storedState.search;
-    }
-
-    filters.forEach((filter) => {
-      const value = storedState.filters?.[filter.dataset.tableFilterColumn || ''];
-
-      if (typeof value === 'string') {
-        filter.value = value;
-      }
-    });
 
     clear.className = 'btn secondary small';
     clear.type = 'button';
@@ -306,45 +227,299 @@ document.addEventListener('DOMContentLoaded', () => {
     actions.appendChild(clear);
     count.className = 'table-count muted';
     count.setAttribute('aria-live', 'polite');
-    controls.append(actions, count);
+    controls.append(searchLabel, actions, count);
+
     empty.className = 'empty-state table-empty';
     empty.hidden = true;
     empty.textContent = table.dataset.tableEmpty || 'No rows match these filters.';
+
+    rowsSetLabels();
+
+    headers.forEach((header, index) => {
+      const label = labels[index] || 'Column';
+      const skipFilter = header.dataset.noFilter === 'true';
+      const skipSort = header.dataset.noSort === 'true';
+      const values = collectColumnValues(index);
+      const headerWrap = document.createElement('div');
+      const trigger = document.createElement('button');
+      const labelText = document.createElement('span');
+      const state = document.createElement('span');
+
+      headerWrap.className = 'table-head-wrap';
+      trigger.type = 'button';
+      trigger.className = 'table-filter-button';
+      trigger.dataset.column = String(index);
+      labelText.textContent = label;
+      state.className = 'table-filter-state';
+      state.setAttribute('aria-hidden', 'true');
+      trigger.append(labelText, state);
+      header.textContent = '';
+      header.appendChild(headerWrap);
+      headerWrap.appendChild(trigger);
+
+      if (skipFilter && skipSort) {
+        trigger.disabled = true;
+        return;
+      }
+
+      const menu = buildColumnMenu(index, label, values, skipFilter, skipSort);
+      headerWrap.appendChild(menu);
+      menus.push({ index, trigger, menu, values, skipFilter, skipSort });
+
+      trigger.addEventListener('click', (event) => {
+        event.stopPropagation();
+        closeMenus(menu);
+        menu.hidden = !menu.hidden;
+        trigger.setAttribute('aria-expanded', String(!menu.hidden));
+      });
+    });
+
+    cleanStoredState();
 
     if (wrap && wrap.parentNode) {
       wrap.parentNode.insertBefore(controls, wrap);
       wrap.parentNode.insertBefore(empty, wrap.nextSibling);
     }
 
-    function applyFilters() {
-      const searchValue = normalizeText(search.value);
-      let visible = 0;
+    controls.addEventListener('submit', (event) => {
+      event.preventDefault();
+      applyTableState();
+    });
 
-      Array.from(tbody.rows).forEach((row) => {
-        const searchableText = Array.from(row.cells)
-          .filter((cell, index) => headers[index]?.dataset.noFilter !== 'true' && headers[index]?.dataset.noSort !== 'true')
-          .map((cell) => cell.textContent || '')
-          .join(' ');
-        const matchesSearch = searchValue === '' || normalizeText(searchableText).includes(searchValue);
-        const matchesFilters = filters.every((filter) => {
-          const value = filter.value;
-          const column = Number.parseInt(filter.dataset.tableFilterColumn || '0', 10);
+    search.addEventListener('input', () => applyTableState());
 
-          return value === '' || normalizeText(row.cells[column]?.textContent || '') === value;
+    clear.addEventListener('click', () => {
+      search.value = '';
+      filterState = {};
+      sortState = { column: null, direction: 'none' };
+      try {
+        window.localStorage.removeItem(storageKey);
+      } catch (error) {
+        // Keep the visible table reset even if localStorage is unavailable.
+      }
+      applyTableState({ persist: false });
+    });
+
+    document.addEventListener('click', () => closeMenus());
+    table.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        closeMenus();
+      }
+    });
+
+    applyTableState();
+
+    function rowsSetLabels() {
+      originalRows.forEach((row) => {
+        Array.from(row.cells).forEach((cell, index) => {
+          if (!cell.hasAttribute('data-label')) {
+            cell.setAttribute('data-label', labels[index] || '');
+          }
         });
-        const isVisible = matchesSearch && matchesFilters;
+      });
+    }
 
-        row.hidden = !isVisible;
+    function cellText(row, index) {
+      return (row.cells[index]?.textContent || '').replace(/\s+/g, ' ').trim();
+    }
 
-        if (isVisible) visible += 1;
+    function valueKey(value) {
+      const text = String(value || '').trim();
+      return text === '' ? emptyFilterValue : normalizeText(text);
+    }
+
+    function collectColumnValues(index) {
+      const unique = new Map();
+
+      originalRows.forEach((row) => {
+        const text = cellText(row, index);
+        unique.set(valueKey(text), text === '' ? '(Empty)' : text);
       });
 
-      count.textContent = `${visible} of ${rows.length} shown`;
-      empty.hidden = visible > 0;
+      return Array.from(unique.entries())
+        .map(([key, label]) => ({ key, label }))
+        .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: 'base' }));
+    }
 
+    function buildColumnMenu(index, label, values, skipFilter, skipSort) {
+      const menu = document.createElement('div');
+      const actionList = document.createElement('div');
+      const asc = document.createElement('button');
+      const desc = document.createElement('button');
+      const clearColumn = document.createElement('button');
+      const optionList = document.createElement('div');
+      const footer = document.createElement('div');
+      const close = document.createElement('button');
+
+      menu.className = 'table-menu';
+      menu.hidden = true;
+      menu.addEventListener('click', (event) => event.stopPropagation());
+      actionList.className = 'table-menu-actions';
+      asc.type = 'button';
+      asc.textContent = 'Ascending';
+      desc.type = 'button';
+      desc.textContent = 'Descending';
+      clearColumn.type = 'button';
+      clearColumn.textContent = `Clear Filters from ${label}`;
+      [asc, desc, clearColumn].forEach((button) => {
+        button.className = 'table-menu-action';
+      });
+
+      asc.disabled = skipSort;
+      desc.disabled = skipSort;
+      clearColumn.disabled = skipFilter;
+      actionList.append(asc, desc, clearColumn);
+      optionList.className = 'table-menu-options';
+
+      if (skipFilter) {
+        const note = document.createElement('p');
+        note.className = 'muted table-menu-note';
+        note.textContent = 'Filtering is not available for this column.';
+        optionList.appendChild(note);
+      } else {
+        values.forEach((value) => {
+          const optionLabel = document.createElement('label');
+          const checkbox = document.createElement('input');
+          const text = document.createElement('span');
+
+          optionLabel.className = 'table-menu-check';
+          checkbox.type = 'checkbox';
+          checkbox.value = value.key;
+          text.textContent = value.label;
+          optionLabel.append(checkbox, text);
+          optionList.appendChild(optionLabel);
+
+          checkbox.addEventListener('change', () => {
+            const checked = Array.from(optionList.querySelectorAll('input[type="checkbox"]:checked')).map((input) => input.value);
+
+            if (checked.length === values.length) {
+              delete filterState[String(index)];
+            } else {
+              filterState[String(index)] = checked;
+            }
+
+            applyTableState();
+          });
+        });
+      }
+
+      close.className = 'btn secondary small';
+      close.type = 'button';
+      close.textContent = 'Close';
+      footer.className = 'table-menu-footer';
+      footer.appendChild(close);
+      menu.append(actionList, optionList, footer);
+
+      asc.addEventListener('click', () => {
+        sortState = { column: index, direction: 'asc' };
+        closeMenus();
+        applyTableState();
+      });
+
+      desc.addEventListener('click', () => {
+        sortState = { column: index, direction: 'desc' };
+        closeMenus();
+        applyTableState();
+      });
+
+      clearColumn.addEventListener('click', () => {
+        delete filterState[String(index)];
+        closeMenus();
+        applyTableState();
+      });
+
+      close.addEventListener('click', () => closeMenus());
+
+      return menu;
+    }
+
+    function closeMenus(except = null) {
+      document.querySelectorAll('.table-menu').forEach((menu) => {
+        if (menu !== except) {
+          menu.hidden = true;
+          menu.closest('.table-head-wrap')?.querySelector('.table-filter-button')?.setAttribute('aria-expanded', 'false');
+        }
+      });
+    }
+
+    function cleanStoredState() {
+      menus.forEach(({ index, values, skipFilter }) => {
+        const key = String(index);
+
+        if (skipFilter || !Array.isArray(filterState[key])) return;
+
+        const validValues = new Set(values.map((value) => value.key));
+        filterState[key] = filterState[key].filter((value) => validValues.has(value));
+
+        if (filterState[key].length === values.length) {
+          delete filterState[key];
+        }
+      });
+
+      if (sortState.column !== null && (!headers[sortState.column] || headers[sortState.column]?.dataset.noSort === 'true')) {
+        sortState = { column: null, direction: 'none' };
+      }
+    }
+
+    function sortedRows() {
+      const rows = originalRows.slice();
+
+      if (sortState.column === null || sortState.direction === 'none') {
+        return rows;
+      }
+
+      return rows.sort((a, b) => {
+        const aText = cellText(a, sortState.column);
+        const bText = cellText(b, sortState.column);
+        const aNumber = Number(aText.replace(/[^\d.-]/g, ''));
+        const bNumber = Number(bText.replace(/[^\d.-]/g, ''));
+        const bothNumeric = aText !== '' && bText !== '' && Number.isFinite(aNumber) && Number.isFinite(bNumber);
+        const result = bothNumeric ? aNumber - bNumber : aText.localeCompare(bText, undefined, { numeric: true, sensitivity: 'base' });
+
+        return sortState.direction === 'asc' ? result : -result;
+      });
+    }
+
+    function rowMatchesFilters(row) {
+      return Object.entries(filterState).every(([column, selected]) => {
+        if (!Array.isArray(selected)) return true;
+        return selected.includes(valueKey(cellText(row, Number.parseInt(column, 10))));
+      });
+    }
+
+    function searchableText(row) {
+      return Array.from(row.cells)
+        .filter((cell, index) => headers[index]?.dataset.noFilter !== 'true' && headers[index]?.dataset.noSort !== 'true')
+        .map((cell) => cell.textContent || '')
+        .join(' ');
+    }
+
+    function syncMenuState() {
+      menus.forEach(({ index, trigger, menu, values, skipFilter }) => {
+        const selected = filterState[String(index)];
+        const isFiltered = Array.isArray(selected) && selected.length < values.length;
+        const isSorted = sortState.column === index && sortState.direction !== 'none';
+        const state = trigger.querySelector('.table-filter-state');
+        const checkboxes = Array.from(menu.querySelectorAll('input[type="checkbox"]'));
+
+        checkboxes.forEach((checkbox) => {
+          checkbox.checked = skipFilter || !isFiltered || selected.includes(checkbox.value);
+        });
+
+        trigger.dataset.filtered = isFiltered ? 'true' : 'false';
+        trigger.dataset.sortDirection = isSorted ? sortState.direction : 'none';
+
+        if (state) {
+          state.textContent = isFiltered ? '*' : '';
+        }
+      });
+    }
+
+    function persistState() {
       const nextState = {
         search: search.value,
-        filters: Object.fromEntries(filters.map((filter) => [filter.dataset.tableFilterColumn || '', filter.value])),
+        filters: filterState,
+        sort: sortState,
       };
 
       try {
@@ -354,25 +529,30 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    controls.addEventListener('submit', (event) => {
-      event.preventDefault();
-      applyFilters();
-    });
-    search.addEventListener('input', applyFilters);
-    filters.forEach((filter) => filter.addEventListener('change', applyFilters));
-    clear.addEventListener('click', () => {
-      search.value = '';
-      filters.forEach((filter) => {
-        filter.value = '';
+    function applyTableState(options = {}) {
+      const shouldPersist = options.persist !== false;
+      const searchValue = normalizeText(search.value);
+      let visible = 0;
+
+      sortedRows().forEach((row) => tbody.appendChild(row));
+
+      originalRows.forEach((row) => {
+        const matchesSearch = searchValue === '' || normalizeText(searchableText(row)).includes(searchValue);
+        const isVisible = matchesSearch && rowMatchesFilters(row);
+
+        row.hidden = !isVisible;
+
+        if (isVisible) visible += 1;
       });
-      try {
-        window.localStorage.removeItem(storageKey);
-      } catch (error) {
-        return;
+
+      count.textContent = `${visible} of ${originalRows.length} shown`;
+      empty.hidden = visible > 0;
+      syncMenuState();
+
+      if (shouldPersist) {
+        persistState();
       }
-      applyFilters();
-    });
-    applyFilters();
+    }
   });
 
   if (reduceMotion) return;

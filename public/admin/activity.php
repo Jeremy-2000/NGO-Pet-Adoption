@@ -34,6 +34,7 @@ try {
       <nav>
         <a href="<?php echo e(url('/admin/dashboard.php')); ?>">Dashboard</a>
         <a href="<?php echo e(url('/admin/search.php')); ?>">Search</a>
+        <a href="<?php echo e(url('/admin/users.php')); ?>">Users</a>
         <a href="<?php echo e(url('/admin/shelters.php')); ?>">Shelters</a>
         <a href="<?php echo e(url('/admin/animals.php')); ?>">Animals</a>
         <a href="<?php echo e(url('/admin/reports.php')); ?>">Reports</a>

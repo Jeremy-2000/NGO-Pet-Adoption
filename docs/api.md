@@ -28,6 +28,7 @@ This is a page-rendered PHP app, not a JSON API. The following endpoints are the
 ## Admin
 
 - `GET /admin/dashboard.php`: platform metrics and activity.
+- `GET|POST /admin/users.php`: user list, account details, and admin password reset.
 - `GET|POST /admin/shelters.php`: approve/reject shelter applications.
 - `GET|POST /admin/animals.php`: moderate listing status and featured flag.
 - `GET|POST /admin/reports.php`: update report status.

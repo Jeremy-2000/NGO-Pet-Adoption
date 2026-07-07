@@ -23,7 +23,7 @@ For an existing local database, run `php database/upgrade.php` after pulling upd
 
 - Public: `/`, `/animals.php`, `/animal.php?id=1`, `/account.php`, `/shelters.php`, `/shelter.php?slug=...`, `/vote.php`
 - Shelter: `/shelter/dashboard.php`, `/shelter/profile.php`, `/shelter/listings.php`, `/shelter/inquiries.php`, `/shelter/applications.php`, `/shelter/questions.php`
-- Admin: `/admin/dashboard.php`, `/admin/search.php`, `/admin/shelters.php`, `/admin/animals.php`, `/admin/reports.php`, `/admin/activity.php`, `/admin/taxonomy.php`
+- Admin: `/admin/dashboard.php`, `/admin/search.php`, `/admin/users.php`, `/admin/shelters.php`, `/admin/animals.php`, `/admin/reports.php`, `/admin/activity.php`, `/admin/taxonomy.php`
 
 ## Documentation
 

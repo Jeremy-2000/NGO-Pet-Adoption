@@ -6,6 +6,7 @@ requireRole('admin');
 
 $type = (string) ($_GET['type'] ?? '');
 $allowed = [
+    'users' => 'SELECT id, name, email, role, status, last_login_at, created_at FROM users ORDER BY created_at DESC',
     'shelters' => 'SELECT id, name, contact_email, contact_phone, city, region, country, status, created_at FROM shelters ORDER BY created_at DESC',
     'animals' => 'SELECT a.id, a.name, a.species, a.breed, a.age, a.gender, a.size, a.status, s.name AS shelter, a.views_count, a.favorites_count, a.created_at FROM animals a INNER JOIN shelters s ON s.id = a.shelter_id ORDER BY a.created_at DESC',
     'inquiries' => 'SELECT i.id, i.name, i.email, i.phone, a.name AS animal, s.name AS shelter, i.status, i.appointment_at, i.created_at FROM inquiries i LEFT JOIN animals a ON a.id = i.animal_id LEFT JOIN shelters s ON s.id = i.shelter_id ORDER BY i.created_at DESC',
