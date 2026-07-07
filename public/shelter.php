@@ -42,7 +42,7 @@ try {
       </nav>
       <div class="actions">
         <?php if (isLoggedIn()) : ?>
-          <a class="btn secondary" href="<?php echo e(url(currentUser()['role'] === 'visitor' ? '/account.php' : (currentUser()['role'] === 'shelter' ? '/shelter/dashboard.php' : '/admin/dashboard.php'))); ?>">Dashboard</a>
+          <a class="btn secondary" href="<?php echo e(url(user_home_path())); ?>"><?php echo e(user_home_label()); ?></a>
         <?php else : ?>
           <a class="btn secondary" href="<?php echo e(url('/login.php')); ?>">Sign in</a>
         <?php endif; ?>

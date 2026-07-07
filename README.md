@@ -5,7 +5,7 @@ Production-oriented PHP 8 + MySQL animal adoption platform for visitors, shelter
 ## What is included
 
 - Public discovery: homepage, paginated animal search, filters, shelter directory, shelter profiles, animal details, adopter accounts, applications, favourites, reports, and voting.
-- Shelter portal: approval-aware dashboard, task queue, profile management, listing create/edit/preview, photo ordering/crop focus, inquiry pipeline, adoption applications, and appointment tracking.
+- Shelter portal: approval-aware dashboard, task queue, profile management, listing create/edit/preview, photo ordering/crop focus, inquiry pipeline, custom application questions, adoption applications, and appointment tracking.
 - Admin console: shelter approval queue, listing moderation, featured listings, report management, global search, CSV exports, taxonomy management, audit log, and platform metrics.
 - Backend foundation: shared bootstrap, secure sessions, security headers, CSRF protection, prepared statements, rate limiting, audit logging, repository/service layers, and configurable visibility scoring.
 - Upload foundation: JPG/PNG/WebP validation, MIME checks, unique filenames, resizing/compression when GD is available, and thumbnails.
@@ -22,7 +22,7 @@ For an existing local database, run `php database/upgrade.php` after pulling upd
 ## Main paths
 
 - Public: `/`, `/animals.php`, `/animal.php?id=1`, `/account.php`, `/shelters.php`, `/shelter.php?slug=...`, `/vote.php`
-- Shelter: `/shelter/dashboard.php`, `/shelter/profile.php`, `/shelter/listings.php`, `/shelter/inquiries.php`, `/shelter/applications.php`
+- Shelter: `/shelter/dashboard.php`, `/shelter/profile.php`, `/shelter/listings.php`, `/shelter/inquiries.php`, `/shelter/applications.php`, `/shelter/questions.php`
 - Admin: `/admin/dashboard.php`, `/admin/search.php`, `/admin/shelters.php`, `/admin/animals.php`, `/admin/reports.php`, `/admin/activity.php`, `/admin/taxonomy.php`
 
 ## Documentation

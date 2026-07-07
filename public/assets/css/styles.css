@@ -196,6 +196,7 @@ button, input, select, textarea { font: inherit; }
 .card-title { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
 .card-title h2, .card-title h3 { margin: 0; }
 .card-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
+.action-state { margin: 12px 0 0; }
 .badge {
   display: inline-flex;
   align-items: center;
@@ -269,6 +270,15 @@ label { display: grid; gap: 6px; font-weight: 750; }
 .compound-field { display: grid; grid-template-columns: minmax(90px, .7fr) minmax(120px, 1fr); gap: 8px; }
 .checkbox-row { display: flex; flex-wrap: wrap; gap: 14px; }
 .checkbox-row label { display: flex; align-items: center; gap: 8px; }
+.questionnaire-block {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fbfdfc;
+}
+.questionnaire-block h3 { margin: 0; }
 .honeypot, .visually-hidden {
   position: absolute;
   width: 1px;

@@ -102,6 +102,19 @@ document.addEventListener('DOMContentLoaded', () => {
     syncFields();
   });
 
+  document.querySelectorAll('[data-answer-type]').forEach((select) => {
+    const container = select.closest('form');
+    const choiceOptions = container?.querySelector('[data-choice-options]');
+    const syncOptions = () => {
+      if (choiceOptions) {
+        choiceOptions.hidden = select.value !== 'choice';
+      }
+    };
+
+    select.addEventListener('change', syncOptions);
+    syncOptions();
+  });
+
   document.querySelectorAll('.image-manager select[name*="[crop_focus]"]').forEach((select) => {
     select.addEventListener('change', () => {
       const image = select.closest('article')?.querySelector('img');

@@ -232,6 +232,25 @@ function requireRole(string ...$roles): void
     }
 }
 
+function user_home_path(?array $user = null): string
+{
+    $user = $user ?? currentUser();
+
+    return match ((string) ($user['role'] ?? '')) {
+        'admin' => '/admin/dashboard.php',
+        'shelter' => '/shelter/dashboard.php',
+        'visitor' => '/account.php',
+        default => '/login.php',
+    };
+}
+
+function user_home_label(?array $user = null): string
+{
+    $user = $user ?? currentUser();
+
+    return ((string) ($user['role'] ?? '')) === 'visitor' ? 'Profile' : 'Dashboard';
+}
+
 function csrfToken(): string
 {
     if (empty($_SESSION['csrf_token'])) {
@@ -261,6 +280,32 @@ function flash(string $key, ?string $message = null): ?string
     unset($_SESSION['flash'][$key]);
 
     return $value;
+}
+
+function remember_form(string $key, array $data, ?string $dialogId = null): void
+{
+    unset($data['csrf_token']);
+    $_SESSION['old_form'][$key] = $data;
+
+    if ($dialogId !== null) {
+        $_SESSION['open_dialog'] = $dialogId;
+    }
+}
+
+function old_form(string $key): array
+{
+    $value = $_SESSION['old_form'][$key] ?? [];
+    unset($_SESSION['old_form'][$key]);
+
+    return is_array($value) ? $value : [];
+}
+
+function open_dialog_once(): ?string
+{
+    $dialog = $_SESSION['open_dialog'] ?? null;
+    unset($_SESSION['open_dialog']);
+
+    return is_string($dialog) ? $dialog : null;
 }
 
 function selected(mixed $current, mixed $expected): string

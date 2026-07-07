@@ -94,9 +94,9 @@ try {
   <main>
     <section class="page-title">
       <div class="wrap">
-        <p class="eyebrow">Adopter dashboard</p>
+        <p class="eyebrow">Adopter profile</p>
         <h1>Welcome, <?php echo e($user['name']); ?></h1>
-        <p class="lead muted">Track applications, save favourites, and tune your matching preferences.</p>
+        <p class="lead muted">Track applications, save favourites, and tune your basic matching information.</p>
       </div>
     </section>
 
@@ -140,7 +140,7 @@ try {
 
         <section class="grid two-up account-grid">
           <article class="card">
-            <h2>Matching questionnaire</h2>
+            <h2>Basic matching information</h2>
             <form method="post" class="form">
               <input type="hidden" name="csrf_token" value="<?php echo e(csrfToken()); ?>">
               <label><span>Lifestyle</span><select class="input" name="lifestyle">

@@ -76,6 +76,7 @@ try {
         <a href="<?php echo e(url('/shelter/listings.php')); ?>">Listings</a>
         <a href="<?php echo e(url('/shelter/inquiries.php')); ?>">Inquiries</a>
         <a href="<?php echo e(url('/shelter/applications.php')); ?>">Applications</a>
+        <a href="<?php echo e(url('/shelter/questions.php')); ?>">Questions</a>
         <a href="<?php echo e(url('/logout.php')); ?>">Logout</a>
       </nav>
     </aside>

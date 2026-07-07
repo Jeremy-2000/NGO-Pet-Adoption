@@ -89,6 +89,24 @@ try {
     );
     $applications->execute([(int) $shelter['id']]);
     $applications = $applications->fetchAll();
+    $applicationAnswers = [];
+
+    if ($applications !== []) {
+        $ids = array_map(static fn (array $application): int => (int) $application['id'], $applications);
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $answers = $pdo->prepare(
+            "SELECT aaa.*, sq.question_text, sq.answer_type
+            FROM adoption_application_answers aaa
+            INNER JOIN shelter_questions sq ON sq.id = aaa.question_id
+            WHERE aaa.application_id IN ({$placeholders})
+            ORDER BY sq.sort_order ASC, sq.id ASC"
+        );
+        $answers->execute($ids);
+
+        foreach ($answers->fetchAll() as $answer) {
+            $applicationAnswers[(int) $answer['application_id']][] = $answer;
+        }
+    }
 } catch (Throwable) {
     http_response_code(500);
     exit('Applications could not be loaded.');
@@ -113,6 +131,7 @@ try {
         <a href="<?php echo e(url('/shelter/listings.php')); ?>">Listings</a>
         <a href="<?php echo e(url('/shelter/inquiries.php')); ?>">Inquiries</a>
         <a class="active" href="<?php echo e(url('/shelter/applications.php')); ?>">Applications</a>
+        <a href="<?php echo e(url('/shelter/questions.php')); ?>">Questions</a>
         <a href="<?php echo e(url('/logout.php')); ?>">Logout</a>
       </nav>
     </aside>
@@ -189,6 +208,19 @@ try {
               <section>
                 <h3>Experience</h3>
                 <p class="dialog-copy"><?php echo nl2br(e($application['experience'])); ?></p>
+              </section>
+            <?php endif; ?>
+            <?php if (!empty($applicationAnswers[(int) $application['id']])) : ?>
+              <section>
+                <h3>Shelter questions</h3>
+                <div class="detail-list">
+                  <?php foreach ($applicationAnswers[(int) $application['id']] as $answer) : ?>
+                    <div>
+                      <span><?php echo e($answer['question_text']); ?></span>
+                      <strong><?php echo e($answer['answer_text'] ?: 'Not answered'); ?></strong>
+                    </div>
+                  <?php endforeach; ?>
+                </div>
               </section>
             <?php endif; ?>
             <form method="post" class="form">
